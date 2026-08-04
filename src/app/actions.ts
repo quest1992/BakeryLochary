@@ -21,13 +21,20 @@ export async function shipmentAction(f:FormData){
   if(paid>0)await tx.payment.create({data:{customerId,shipmentId:s.id,amount:paid,method:String(f.get("method"))==="TRANSFER"?"TRANSFER":"CASH"}});
   await tx.customer.update({where:{id:customerId},data:{bonusPoints:{increment:Math.floor(total/10)}}})
  });go("shipments","Отгрузка сохранена")
+}export async function openingDebtAction(f:FormData){
+ await requireOwner();const customerId=n(f.get("customerId")),amount=n(f.get("amount")),note=String(f.get("note")||"Начальный долг"),rawDate=String(f.get("debtDate")||""),debtDate=rawDate?new Date(rawDate+"T12:00:00"):new Date();
+ if(amount<=0||Number.isNaN(debtDate.getTime()))throw new Error("Проверьте сумму и дату долга");
+ await db.customerDebt.create({data:{customerId,amount,debtDate,note}});go("customers","Начальный долг клиента добавлен")
 }export async function paymentAction(f:FormData){
  await requireOwner();const customerId=n(f.get("customerId")),amount=n(f.get("amount")),method=String(f.get("method"))==="TRANSFER"?"TRANSFER" as const:"CASH" as const,note=String(f.get("note")||"");
  if(amount<=0)throw new Error("Введите сумму");
- await db.$transaction(async tx=>{let left=amount;const open=await tx.shipment.findMany({where:{customerId,status:"DELIVERED"},orderBy:{deliveredAt:"asc"}});
+ await db.$transaction(async tx=>{let left=amount;
+  const debts=await tx.customerDebt.findMany({where:{customerId},orderBy:{debtDate:"asc"}});
+  for(const d of debts){if(left<=0)break;const due=Math.max(0,d.amount-d.paidAmount);if(!due)continue;const part=Math.min(due,left);await tx.customerDebt.update({where:{id:d.id},data:{paidAmount:{increment:part}}});await tx.payment.create({data:{customerId,customerDebtId:d.id,amount:part,method,note}});left-=part}
+  const open=await tx.shipment.findMany({where:{customerId,status:"DELIVERED"},orderBy:{deliveredAt:"asc"}});
   for(const s of open){if(left<=0)break;const due=Math.max(0,s.total-s.paidAmount);if(!due)continue;const part=Math.min(due,left);await tx.shipment.update({where:{id:s.id},data:{paidAmount:{increment:part}}});await tx.payment.create({data:{customerId,shipmentId:s.id,amount:part,method,note}});left-=part}
   if(left>0)await tx.payment.create({data:{customerId,amount:left,method,note:note||"Аванс"}})
- });go("finance","Оплата распределена по старым накладным")
+ });go("finance","Оплата распределена: сначала старый долг, затем накладные")
 }export async function expenseAction(f:FormData){const u=await requireOwner(),amount=n(f.get("amount"));if(amount<=0)throw new Error("Введите сумму");await db.expense.create({data:{category:String(f.get("category")||"Прочее"),amount,note:String(f.get("note")||""),userId:u.id}});go("finance","Расход записан")}
 export async function ingredientAction(f:FormData){await requireOwner();const ingredientId=n(f.get("ingredientId")),quantity=n(f.get("quantity"));if(quantity<=0)throw new Error("Введите количество");await db.$transaction([db.ingredient.update({where:{id:ingredientId},data:{stock:{increment:quantity}}}),db.ingredientMovement.create({data:{ingredientId,quantity,type:"PURCHASE",note:String(f.get("note")||"Приход сырья")}})]);go("ingredients","Приход добавлен")}
 export async function customerAction(f:FormData){await requireUser();await db.customer.create({data:{name:String(f.get("name")||""),phone:String(f.get("phone")||""),address:String(f.get("address")||""),creditLimit:n(f.get("creditLimit"))}});go("customers","Клиент добавлен")}

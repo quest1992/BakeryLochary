@@ -134,7 +134,21 @@ model Customer {
   active      Boolean    @default(true)
   shipments   Shipment[]
   payments    Payment[]
+  debts       CustomerDebt[]
   createdAt   DateTime   @default(now())
+}
+
+model CustomerDebt {
+  id         Int       @id @default(autoincrement())
+  customerId Int
+  amount     Float
+  paidAmount Float     @default(0)
+  debtDate   DateTime  @default(now())
+  note       String?
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  payments   Payment[]
+
+  @@index([customerId, debtDate])
 }
 
 model Shipment {
@@ -170,12 +184,14 @@ model Payment {
   id         Int           @id @default(autoincrement())
   customerId Int
   shipmentId Int?
+  customerDebtId Int?
   amount     Float
   method     PaymentMethod @default(CASH)
   paidAt     DateTime      @default(now())
   note       String?
   customer   Customer      @relation(fields: [customerId], references: [id])
   shipment   Shipment?     @relation(fields: [shipmentId], references: [id])
+  customerDebt CustomerDebt? @relation(fields: [customerDebtId], references: [id])
 
   @@index([customerId, paidAt])
 }
