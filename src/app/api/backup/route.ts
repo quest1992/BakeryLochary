@@ -1,0 +1,3 @@
+import{readFile}from"fs/promises";import path from"path";import{NextResponse}from"next/server";import{getUser}from"@/lib/auth";
+function databasePath(){const url=process.env.DATABASE_URL||"file:./dev.db";const value=url.replace(/^file:/,"");return path.isAbsolute(value)?value:path.join(process.cwd(),"prisma",value)}
+export async function GET(){const u=await getUser();if(!u||u.role!=="OWNER")return new NextResponse("Доступ запрещён",{status:403});const file=await readFile(databasePath());const date=new Date().toISOString().slice(0,10);return new NextResponse(file,{headers:{"Content-Type":"application/x-sqlite3","Content-Disposition":'attachment; filename="lochari-backup-'+date+'.db',"Cache-Control":"no-store"}})}

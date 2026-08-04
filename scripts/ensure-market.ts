@@ -1,0 +1,1 @@
+import{PrismaClient}from"@prisma/client";const db=new PrismaClient();async function main(){const count=await db.supplier.count();if(!count)await db.supplier.create({data:{name:"Рынок Саховат",address:"Душанбе",note:"Основное место закупки сырья"}})}main().finally(()=>db.$disconnect());

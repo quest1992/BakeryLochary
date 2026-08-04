@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  WORKER
+}
+
+enum Unit {
+  KG
+  G
+  L
+  ML
+  PCS
+}
+
+enum MovementType {
+  PURCHASE
+  PRODUCTION_USE
+  ADJUSTMENT
+}
+
+enum ShipmentStatus {
+  DRAFT
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+}
+
+model User {
+  id           Int               @id @default(autoincrement())
+  name         String
+  username     String            @unique
+  passwordHash String
+  role         Role              @default(WORKER)
+  active       Boolean           @default(true)
+  productions  ProductionBatch[]
+  shipments    Shipment[]
+  expenses     Expense[]
+  purchases    Purchase[]
+  createdAt    DateTime          @default(now())
+}
+
+model Product {
+  id            Int               @id @default(autoincrement())
+  name          String            @unique
+  sku           String            @unique
+  price         Float
+  costPrice     Float             @default(0)
+  active        Boolean           @default(true)
+  recipes       RecipeItem[]
+  stock         ProductStock?
+  batches       ProductionBatch[]
+  shipmentItems ShipmentItem[]
+  createdAt     DateTime          @default(now())
+}
+
+model Ingredient {
+  id            Int                  @id @default(autoincrement())
+  name          String               @unique
+  unit          Unit
+  stock         Float                @default(0)
+  minStock      Float                @default(0)
+  targetStock   Float    @default(0)
+  purchasePrice Float                @default(0)
+  active        Boolean              @default(true)
+  recipes       RecipeItem[]
+  movements     IngredientMovement[]
+  purchaseItems PurchaseItem[]
+  createdAt     DateTime             @default(now())
+}
+
+model RecipeItem {
+  id           Int        @id @default(autoincrement())
+  productId    Int
+  ingredientId Int
+  quantity     Float
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([productId, ingredientId])
+}
+
+model IngredientMovement {
+  id           Int          @id @default(autoincrement())
+  ingredientId Int
+  type         MovementType
+  quantity     Float
+  note         String?
+  createdAt    DateTime     @default(now())
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id])
+
+  @@index([ingredientId, createdAt])
+}
+
+model ProductStock {
+  id        Int     @id @default(autoincrement())
+  productId Int     @unique
+  quantity  Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductionBatch {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  quantity   Int
+  producedAt DateTime @default(now())
+  userId     Int
+  note       String?
+  product    Product  @relation(fields: [productId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([producedAt])
+}
+
+model Customer {
+  id          Int        @id @default(autoincrement())
+  name        String
+  phone       String?
+  address     String?
+  creditLimit Float      @default(0)
+  bonusPoints Int        @default(0)
+  bonusTier   String     @default("Базовый")
+  active      Boolean    @default(true)
+  shipments   Shipment[]
+  payments    Payment[]
+  createdAt   DateTime   @default(now())
+}
+
+model Shipment {
+  id          Int            @id @default(autoincrement())
+  customerId  Int
+  userId      Int
+  status      ShipmentStatus @default(DELIVERED)
+  total       Float
+  paidAmount  Float          @default(0)
+  deliveredAt DateTime       @default(now())
+  note        String?
+  customer    Customer       @relation(fields: [customerId], references: [id])
+  user        User           @relation(fields: [userId], references: [id])
+  items       ShipmentItem[]
+  payments    Payment[]
+
+  @@index([customerId, deliveredAt])
+  @@index([deliveredAt])
+}
+
+model ShipmentItem {
+  id         Int      @id @default(autoincrement())
+  shipmentId Int
+  productId  Int
+  quantity   Int
+  price      Float
+  costPrice  Float    @default(0)
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
+}
+
+model Payment {
+  id         Int           @id @default(autoincrement())
+  customerId Int
+  shipmentId Int?
+  amount     Float
+  method     PaymentMethod @default(CASH)
+  paidAt     DateTime      @default(now())
+  note       String?
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  shipment   Shipment?     @relation(fields: [shipmentId], references: [id])
+
+  @@index([customerId, paidAt])
+}
+
+model Expense {
+  id       Int      @id @default(autoincrement())
+  category String
+  amount   Float
+  note     String?
+  spentAt  DateTime @default(now())
+  userId   Int
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([spentAt])
+}
+
+model ProductMovement {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  type       String
+  quantity   Int
+  note       String?
+  userId     Int
+  shipmentId Int?
+  createdAt  DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([shipmentId])
+}
+
+model Supplier {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  phone     String?
+  address   String?
+  note      String?
+  active    Boolean    @default(true)
+  purchases Purchase[]
+  createdAt DateTime   @default(now())
+}
+
+model Purchase {
+  id            Int            @id @default(autoincrement())
+  supplierId    Int
+  userId        Int
+  invoiceNumber String?
+  total         Float
+  purchasedAt   DateTime       @default(now())
+  note          String?
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  items         PurchaseItem[]
+
+  @@index([supplierId, purchasedAt])
+  @@index([purchasedAt])
+}
+
+model PurchaseItem {
+  id           Int        @id @default(autoincrement())
+  purchaseId   Int
+  ingredientId Int
+  quantity     Float
+  price        Float
+  purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+}
