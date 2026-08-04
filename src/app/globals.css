@@ -86,3 +86,5 @@ details[open]>form,details[open]>.miniForm{padding:4px 12px 13px}
  .formGrid{grid-template-columns:1fr}.two{gap:12px}.managementGrid{gap:10px}
  input,select{height:44px;font-size:14px}.tableCard{margin-left:-12px;margin-right:-12px}
 }
+
+.recipeLine{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);position:relative;z-index:1}.recipeLine:last-child{border-bottom:0}.recipeLine p{margin:0!important;color:var(--ink)!important}.recipeDeleteForm{margin:0}.recipeDeleteButton{display:inline-flex;align-items:center;gap:5px;width:auto;padding:7px 9px;background:#fff3f0;color:#a9483c;border:1px solid #edc9c2;box-shadow:none;font-size:10px}.recipeDeleteButton:hover{background:#f9dfda;box-shadow:none}.emptyRecipe{position:relative;z-index:1;color:var(--muted)!important;font-style:italic}
