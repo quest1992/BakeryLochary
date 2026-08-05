@@ -230,7 +230,36 @@ model Supplier {
   note      String?
   active    Boolean    @default(true)
   purchases Purchase[]
+  debts     SupplierDebt[]
+  payments  SupplierPayment[]
   createdAt DateTime   @default(now())
+}
+
+model SupplierDebt {
+  id         Int               @id @default(autoincrement())
+  supplierId Int
+  amount     Float
+  paidAmount Float             @default(0)
+  debtDate   DateTime          @default(now())
+  note       String?
+  supplier   Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  payments   SupplierPayment[]
+
+  @@index([supplierId, debtDate])
+}
+
+model SupplierPayment {
+  id             Int           @id @default(autoincrement())
+  supplierId     Int
+  supplierDebtId Int?
+  amount         Float
+  method         PaymentMethod @default(CASH)
+  paidAt         DateTime      @default(now())
+  note           String?
+  supplier       Supplier      @relation(fields: [supplierId], references: [id])
+  supplierDebt   SupplierDebt? @relation(fields: [supplierDebtId], references: [id])
+
+  @@index([supplierId, paidAt])
 }
 
 model Purchase {
