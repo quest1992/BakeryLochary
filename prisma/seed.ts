@@ -1,6 +1,7 @@
 import {PrismaClient,Role,Unit,ShipmentStatus,PaymentMethod} from "@prisma/client";
 import{hash}from"bcryptjs";const db=new PrismaClient();
 async function main(){
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma delegates share deleteMany but have different generated types.
 for(const m of [db.purchaseItem,db.purchase,db.supplier,db.shipmentItem,db.payment,db.shipment,db.productionBatch,db.ingredientMovement,db.recipeItem,db.productStock,db.expense,db.customer,db.product,db.ingredient,db.user])await (m as any).deleteMany();
 const owner=await db.user.create({data:{name:"Усмон",username:"owner",passwordHash:await hash("lochari2026",10),role:Role.OWNER}});
 await db.user.createMany({data:[{name:"Супруга",username:"wife",passwordHash:await hash("worker123",10),role:Role.WORKER},{name:"Сотрудница",username:"worker",passwordHash:await hash("worker123",10),role:Role.WORKER}]});await db.supplier.createMany({data:[{name:"Оптовый склад Саховат",phone:"+992 900 22 33 44",address:"рынок Саховат",note:"Мука и сахар"},{name:"Фермерское хозяйство Баракат",phone:"+992 918 55 66 77",address:"Гиссар",note:"Яйца и масло"}]});
