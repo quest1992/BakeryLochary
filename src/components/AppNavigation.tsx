@@ -19,7 +19,7 @@ export default function AppNavigation({tab,user}:{tab:string;user:{name:string;r
   <button className="mobileMenuButton" onClick={()=>setMobileOpen(true)} aria-label="Открыть меню"><Menu size={21}/><span>Меню</span></button>
   {mobileOpen&&<button className="navBackdrop" aria-label="Закрыть меню" onClick={()=>setMobileOpen(false)}/>}
   <aside className={mobileOpen?"navOpen":""}>
-   <div className="logo"><span>Л</span><div><b>Учёт Лочари</b><small>семейная пекарня</small></div><button className="mobileClose" onClick={()=>setMobileOpen(false)}><X size={20}/></button></div>
+   <div className="logo"><span>Л</span><div><b>Нонвойхонаи Лочари</b><small>учёт пекарни</small></div><button className="mobileClose" onClick={()=>setMobileOpen(false)}><X size={20}/></button></div>
    <nav>{groups.map(group=>{const visible=group.items.filter(i=>user.role==="OWNER"||!ownerOnly.includes(i[0]));if(!visible.length)return null;const isOpen=opened[group.id]||group.id===activeGroup;const GroupIcon=group.icon;return <section className="navGroup" key={group.id}>
     <button className="navGroupButton" onClick={()=>setOpened(v=>({...v,[group.id]:!isOpen}))}><GroupIcon size={16}/><span>{group.label}</span><ChevronDown size={15} className={isOpen?"rotated":""}/></button>
     <div className={isOpen?"navGroupItems expanded":"navGroupItems"}>{visible.map(([id,label,Icon])=><Link key={id} href={"/?tab="+id} className={tab===id?"active":""} onClick={()=>setMobileOpen(false)}><Icon size={18}/><span>{label}</span>{tab===id&&<i/>}</Link>)}</div>
