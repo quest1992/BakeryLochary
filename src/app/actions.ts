@@ -1,5 +1,6 @@
 "use server";
 import{compare,hash}from"bcryptjs";import{redirect}from"next/navigation";import{revalidatePath}from"next/cache";import{db}from"@/lib/db";import{clearSession,requireOwner,requireUser,setSession}from"@/lib/auth";import{calculateProductionUsage}from"@/lib/production";
+import{isValidShipmentItems,type ShipmentItem}from"@/lib/shipment";
 const n=(v:FormDataEntryValue|null)=>Number(v);
 const go=(tab:string,msg:string)=>{revalidatePath("/");redirect("/?tab="+tab+"&ok="+encodeURIComponent(msg))};
 export async function loginAction(f:FormData){const username=String(f.get("username")||"").trim(),password=String(f.get("password")||"");const u=await db.user.findUnique({where:{username}});if(!u||!u.active||!await compare(password,u.passwordHash))redirect("/login?error=1");await setSession(u.id);redirect("/")}
@@ -7,17 +8,18 @@ export async function logoutAction(){await clearSession();redirect("/login")}
 export async function produceAction(f:FormData){const u=await requireUser(),productId=n(f.get("productId")),quantity=n(f.get("quantity"));if(quantity<=0)throw new Error("Количество должно быть больше нуля");await db.$transaction(async tx=>{const p=await tx.product.findUnique({where:{id:productId},include:{recipes:{include:{ingredient:true}}}});if(!p||!p.recipes.length)throw new Error("У продукта нет рецептуры");const usage=calculateProductionUsage(p.recipes.map(r=>({ingredientId:r.ingredientId,quantity:r.quantity,stock:r.ingredient.stock})),quantity);for(const item of usage){await tx.ingredient.update({where:{id:item.ingredientId},data:{stock:{decrement:item.used}}});await tx.ingredientMovement.create({data:{ingredientId:item.ingredientId,type:"PRODUCTION_USE",quantity:-item.used,note:"Партия "+p.name}})}await tx.productStock.upsert({where:{productId},create:{productId,quantity},update:{quantity:{increment:quantity}}});await tx.productionBatch.create({data:{productId,quantity,userId:u.id,note:String(f.get("note")||"")}})});go("production","Партия выпущена, сырьё списано")}
 export async function shipmentAction(f:FormData){
  const u=await requireUser(),customerId=n(f.get("customerId")),paid=n(f.get("paid"));
- let items:{productId:number;quantity:number}[]=[];
+ let items:unknown=[];
  try{items=JSON.parse(String(f.get("items")||"[]"))}catch{throw new Error("Не удалось прочитать состав отгрузки")}
- if(!Array.isArray(items)||!items.length||items.some(i=>!Number.isInteger(i.productId)||!Number.isInteger(i.quantity)||i.quantity<=0))throw new Error("Добавьте продукцию и количество");
- if(new Set(items.map(i=>i.productId)).size!==items.length)throw new Error("Одинаковая продукция добавлена дважды");
+ if(!isValidShipmentItems(items))throw new Error("Добавьте продукцию и количество");
+ const shipmentItems:ShipmentItem[]=items;
+ if(new Set(shipmentItems.map(i=>i.productId)).size!==shipmentItems.length)throw new Error("Одинаковая продукция добавлена дважды");
  await db.$transaction(async tx=>{
-  const ids=items.map(i=>i.productId),products=await tx.product.findMany({where:{id:{in:ids},active:true},include:{stock:true}});
-  if(products.length!==items.length)throw new Error("Одна из позиций недоступна");
-  let total=0;for(const item of items){const p=products.find(x=>x.id===item.productId)!;if(!p.stock||p.stock.quantity<item.quantity)throw new Error("Недостаточно на складе: "+p.name);total+=p.price*item.quantity}
+  const ids=shipmentItems.map(i=>i.productId),products=await tx.product.findMany({where:{id:{in:ids},active:true},include:{stock:true}});
+  if(products.length!==shipmentItems.length)throw new Error("Одна из позиций недоступна");
+  let total=0;for(const item of shipmentItems){const p=products.find(x=>x.id===item.productId)!;if(!p.stock||p.stock.quantity<item.quantity)throw new Error("Недостаточно на складе: "+p.name);total+=p.price*item.quantity}
   if(paid<0||paid>total)throw new Error("Проверьте сумму оплаты");
-  const s=await tx.shipment.create({data:{customerId,userId:u.id,total,paidAmount:paid,status:"DELIVERED",note:String(f.get("note")||""),items:{create:items.map(item=>{const p=products.find(x=>x.id===item.productId)!;return{productId:item.productId,quantity:item.quantity,price:p.price,costPrice:p.costPrice}})}}});
-  for(const item of items){await tx.productStock.update({where:{productId:item.productId},data:{quantity:{decrement:item.quantity}}});await tx.productMovement.create({data:{productId:item.productId,type:"SHIPMENT",quantity:-item.quantity,userId:u.id,shipmentId:s.id,note:"Отгрузка №"+s.id}})}
+  const s=await tx.shipment.create({data:{customerId,userId:u.id,total,paidAmount:paid,status:"DELIVERED",note:String(f.get("note")||""),items:{create:shipmentItems.map(item=>{const p=products.find(x=>x.id===item.productId)!;return{productId:item.productId,quantity:item.quantity,price:p.price,costPrice:p.costPrice}})}}});
+  for(const item of shipmentItems){await tx.productStock.update({where:{productId:item.productId},data:{quantity:{decrement:item.quantity}}});await tx.productMovement.create({data:{productId:item.productId,type:"SHIPMENT",quantity:-item.quantity,userId:u.id,shipmentId:s.id,note:"Отгрузка №"+s.id}})}
   if(paid>0)await tx.payment.create({data:{customerId,shipmentId:s.id,amount:paid,method:String(f.get("method"))==="TRANSFER"?"TRANSFER":"CASH"}});
   await tx.customer.update({where:{id:customerId},data:{bonusPoints:{increment:Math.floor(total/10)}}})
  });go("shipments","Отгрузка сохранена")
