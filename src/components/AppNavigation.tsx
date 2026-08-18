@@ -7,7 +7,7 @@ import {logoutAction} from "@/app/actions";
 const groups=[
  {id:"work",label:"Работа сегодня",icon:LayoutDashboard,items:[["dashboard","Обзор",LayoutDashboard],["expedition","Экспедитор",Truck],["production","Производство",Factory],["shipments","Отгрузки",Truck],["procurement","Снабженец",ShoppingCart]]},
  {id:"catalog",label:"Склад и справочники",icon:BookOpen,items:[["stock","Готовая продукция",Package],["ingredients","Сырьё",Wheat],["products","Продукция",ClipboardList],["recipes","Рецептуры",BookOpen],["customers","Клиенты",Users],["suppliers","Поставщики",Building2]]},
- {id:"manage",label:"Управление",icon:Settings2,items:[["finance","Финансы",WalletCards],["reports","Отчёты",LayoutDashboard],["team","Команда и доступ",ShieldCheck]]}
+ {id:"manage",label:"Управление",icon:Settings2,items:[["finance","Финансы",WalletCards],["reports","Аналитика",LayoutDashboard],["team","Команда и доступ",ShieldCheck]]}
 ] as const;
 const ownerOnly=["finance","reports","products","recipes","suppliers","procurement"];
 
