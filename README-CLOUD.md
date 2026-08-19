@@ -1,6 +1,6 @@
 # Публикация «Учёт Лочари» в Railway
 
-Переменные: DATABASE_URL=file:/data/lochari.db, SESSION_SECRET (32+ символа), ADMIN_NAME, ADMIN_USERNAME, ADMIN_PASSWORD (10+ символов).
+Переменные: DATABASE_URL=file:/data/lochari.db, SESSION_SECRET (32+ символа), ADMIN_NAME, ADMIN_USERNAME, ADMIN_PASSWORD (10+ символов), INVESTOR_USERNAME и INVESTOR_PASSWORD.
 
 Создайте Railway Volume и подключите его по пути /data. Без Volume база будет потеряна при повторной публикации.
 
