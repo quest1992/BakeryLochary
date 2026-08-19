@@ -4,3 +4,5 @@ export function calculateInvestment(principal:number,initialShare:number,buyback
   const currentShare=principal>0?initialShare*(remaining/principal):0;
   return{repaid,remaining,currentShare};
 }
+
+export function calculateInvestorEarnings(netProfit:number,currentShare:number){return Math.max(0,netProfit)*Math.max(0,currentShare)/100}
