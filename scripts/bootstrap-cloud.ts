@@ -7,5 +7,6 @@ async function main(){
  const investor=await db.user.findUnique({where:{username}});
  if(!investor){await db.user.create({data:{name:"Инвестор",username,passwordHash:await hash(password,12),role:Role.INVESTOR}});console.log("Инвестор создан")}
  else if(investor.role!==Role.INVESTOR||!investor.active){await db.user.update({where:{id:investor.id},data:{role:Role.INVESTOR,active:true}});console.log("Доступ инвестора обновлён")}
+ if(!await db.investmentAgreement.findUnique({where:{id:1}})){await db.investmentAgreement.create({data:{id:1,investorName:"Инвестор",principal:50000,initialShare:40,note:"Выкуп доли гибкими платежами"}});console.log("Условия инвестиции созданы")}
 }
 main().finally(()=>db.$disconnect());

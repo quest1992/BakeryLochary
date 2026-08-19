@@ -288,3 +288,26 @@ model PurchaseItem {
   purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
 }
+
+model InvestmentAgreement {
+  id           Int                 @id @default(1)
+  investorName String              @default("Инвестор")
+  principal    Float
+  initialShare Float
+  startedAt    DateTime            @default(now())
+  note         String?
+  buybacks     InvestmentBuyback[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+}
+
+model InvestmentBuyback {
+  id          Int                 @id @default(autoincrement())
+  agreementId Int
+  amount      Float
+  paidAt      DateTime            @default(now())
+  note        String?
+  agreement   InvestmentAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([agreementId, paidAt])
+}
