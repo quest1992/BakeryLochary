@@ -1,5 +1,6 @@
 import {db} from "./db";
 import {calculateInvestment} from "./investment";
+import {groupPaymentsForReport} from "./payment-report";
 
 export type FinancialPeriod = {from: Date; to: Date};
 
@@ -20,7 +21,7 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     db.payment.findMany({where:{paidAt:range},select:{amount:true}}),
     db.customer.findMany({select:{id:true,name:true,phone:true,shipments:{where:{status:"DELIVERED"},select:{total:true,paidAmount:true}},debts:{select:{amount:true,paidAmount:true}}},orderBy:{name:"asc"}}),
     db.supplierDebt.findMany({select:{amount:true,paidAmount:true,supplier:{select:{id:true,name:true}}}}),
-    db.payment.findMany({where:{paidAt:range},select:{id:true,amount:true,method:true,paidAt:true,note:true,customer:{select:{id:true,name:true}}},orderBy:{paidAt:"desc"},take:100}),
+    db.payment.findMany({where:{paidAt:range},select:{id:true,amount:true,method:true,paidAt:true,note:true,customer:{select:{id:true,name:true}},shipment:{select:{id:true,deliveredAt:true}},customerDebt:{select:{id:true}}},orderBy:{paidAt:"desc"},take:500}),
     db.investmentAgreement.findUnique({where:{id:1},select:{investorName:true,principal:true,initialShare:true,startedAt:true,note:true,buybacks:{select:{id:true,amount:true,paidAt:true,note:true},orderBy:{paidAt:"desc"}}}}),
   ]);
   const income = shipments.reduce((sum,row)=>sum+row.total,0);
@@ -45,7 +46,7 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     customers:customerRows,
     suppliers:[...supplierMap.values()].filter(row=>row.debt>0),
     expenses:expenses.map(row=>({id:row.id,category:row.category,amount:row.amount,note:row.note,date:row.spentAt.toISOString(),recordedBy:row.user.name})),
-    payments:paymentHistory.map(row=>({id:row.id,amount:row.amount,method:row.method,date:row.paidAt.toISOString(),note:row.note,customer:{id:row.customer.id,name:row.customer.name}})),
+    payments:groupPaymentsForReport(paymentHistory),
     investment,
   };
 }
