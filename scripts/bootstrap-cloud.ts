@@ -7,6 +7,8 @@ async function main(){
  const investor=await db.user.findUnique({where:{username}});
  if(!investor){await db.user.create({data:{name:"Инвестор",username,passwordHash:await hash(password,12),role:Role.INVESTOR}});console.log("Инвестор создан")}
  else if(investor.role!==Role.INVESTOR||!investor.active){await db.user.update({where:{id:investor.id},data:{role:Role.INVESTOR,active:true}});console.log("Доступ инвестора обновлён")}
- if(!await db.investmentAgreement.findUnique({where:{id:1}})){await db.investmentAgreement.create({data:{id:1,investorName:"Инвестор",principal:50000,initialShare:40,note:"Выкуп доли гибкими платежами"}});console.log("Условия инвестиции созданы")}
+ const officialStart=new Date(process.env.INVESTMENT_START_DATE||"2026-09-01T00:00:00+05:00"),agreement=await db.investmentAgreement.findUnique({where:{id:1},include:{buybacks:{select:{id:true}}}});
+ if(!agreement){await db.investmentAgreement.create({data:{id:1,investorName:"Инвестор",principal:50000,initialShare:40,startedAt:officialStart,note:"Официальный расчёт доли с 01.09.2026"}});console.log("Условия инвестиции созданы")}
+ else if(!agreement.buybacks.length&&agreement.note==="Выкуп доли гибкими платежами"){await db.investmentAgreement.update({where:{id:1},data:{startedAt:officialStart,note:"Официальный расчёт доли с 01.09.2026"}});console.log("Дата начала инвестиции обновлена")}
 }
 main().finally(()=>db.$disconnect());

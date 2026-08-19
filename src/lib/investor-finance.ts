@@ -24,8 +24,8 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     db.supplierDebt.findMany({select:{amount:true,paidAmount:true,supplier:{select:{id:true,name:true}}}}),
     db.payment.findMany({where:{paidAt:range},select:{id:true,amount:true,method:true,paidAt:true,note:true,customer:{select:{id:true,name:true}},shipment:{select:{id:true,deliveredAt:true}},customerDebt:{select:{id:true}}},orderBy:{paidAt:"desc"},take:500}),
     db.investmentAgreement.findUnique({where:{id:1},select:{investorName:true,principal:true,initialShare:true,startedAt:true,note:true,buybacks:{select:{id:true,amount:true,paidAt:true,note:true},orderBy:{paidAt:"desc"}}}}),
-    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:monthRange},select:{total:true,items:{select:{quantity:true,costPrice:true}}}}),
-    db.expense.findMany({where:{spentAt:monthRange},select:{amount:true}}),
+    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:monthRange},select:{total:true,deliveredAt:true,items:{select:{quantity:true,costPrice:true}}}}),
+    db.expense.findMany({where:{spentAt:monthRange},select:{amount:true,spentAt:true}}),
   ]);
   const income = shipments.reduce((sum,row)=>sum+row.total,0);
   const cogs = shipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0);
@@ -43,7 +43,7 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     current.debt+=Math.max(0,row.amount-row.paidAmount);supplierMap.set(current.id,current);
   }
   const investment=investmentAgreement?{...investmentAgreement,...calculateInvestment(investmentAgreement.principal,investmentAgreement.initialShare,investmentAgreement.buybacks.map(row=>row.amount)),startedAt:investmentAgreement.startedAt.toISOString(),buybacks:investmentAgreement.buybacks.map(row=>({...row,paidAt:row.paidAt.toISOString()}))}:null;
-  const monthIncome=monthShipments.reduce((sum,row)=>sum+row.total,0),monthCost=monthShipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0),monthExpense=monthExpenses.reduce((sum,row)=>sum+row.amount,0),monthProfit=monthIncome-monthCost-monthExpense;
+  const monthIncome=monthShipments.reduce((sum,row)=>sum+row.total,0),monthCost=monthShipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0),monthExpense=monthExpenses.reduce((sum,row)=>sum+row.amount,0),monthProfit=monthIncome-monthCost-monthExpense,officialStart=investmentAgreement?.startedAt,eligibleShipments=officialStart?monthShipments.filter(row=>row.deliveredAt>=officialStart):[],eligibleExpenses=officialStart?monthExpenses.filter(row=>row.spentAt>=officialStart):[],eligibleProfit=eligibleShipments.reduce((sum,row)=>sum+row.total-row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0)-eligibleExpenses.reduce((sum,row)=>sum+row.amount,0),investmentActive=Boolean(officialStart&&officialStart<=now);
   return {
     period:{from:period.from.toISOString(),to:period.to.toISOString()},
     summary:{income,expenses:expenseTotal,costOfSales:cogs,profit:income-cogs-expenseTotal,received:payments.reduce((sum,row)=>sum+row.amount,0),soldOnCredit:shipments.reduce((sum,row)=>sum+Math.max(0,row.total-row.paidAmount),0),receivable:customerRows.reduce((sum,row)=>sum+row.debt,0),payable:[...supplierMap.values()].reduce((sum,row)=>sum+row.debt,0)},
@@ -52,6 +52,6 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     expenses:expenses.map(row=>({id:row.id,category:row.category,amount:row.amount,note:row.note,date:row.spentAt.toISOString(),recordedBy:row.user.name})),
     payments:groupPaymentsForReport(paymentHistory),
     investment,
-    currentMonth:{profit:monthProfit,investorEarnings:calculateInvestorEarnings(monthProfit,investment?.currentShare||0),share:investment?.currentShare||0},
+    currentMonth:{profit:monthProfit,investorEarnings:calculateInvestorEarnings(eligibleProfit,investment?.currentShare||0,investmentActive),share:investment?.currentShare||0,investmentActive,officialStart:officialStart?.toISOString()||null},
   };
 }
