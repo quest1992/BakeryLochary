@@ -10,6 +10,7 @@ const groups=[
  {id:"manage",label:"Управление",icon:Settings2,items:[["finance","Финансы",WalletCards],["reports","Аналитика",LayoutDashboard],["team","Команда и доступ",ShieldCheck]]}
 ] as const;
 const ownerOnly=["finance","reports","products","recipes","suppliers","procurement"];
+const investorOnly=["finance","customers","reports"];
 
 export default function AppNavigation({tab,user}:{tab:string;user:{name:string;role:string}}){
  const [mobileOpen,setMobileOpen]=useState(false);
@@ -20,11 +21,11 @@ export default function AppNavigation({tab,user}:{tab:string;user:{name:string;r
   {mobileOpen&&<button className="navBackdrop" aria-label="Закрыть меню" onClick={()=>setMobileOpen(false)}/>}
   <aside className={mobileOpen?"navOpen":""}>
    <div className="logo"><span>Л</span><div><b>Нонвойхонаи Лочари</b><small>учёт пекарни</small></div><button className="mobileClose" onClick={()=>setMobileOpen(false)}><X size={20}/></button></div>
-   <nav>{groups.map(group=>{const visible=group.items.filter(i=>user.role==="OWNER"||!ownerOnly.includes(i[0]));if(!visible.length)return null;const isOpen=opened[group.id]||group.id===activeGroup;const GroupIcon=group.icon;return <section className="navGroup" key={group.id}>
+   <nav>{groups.map(group=>{const visible=group.items.filter(i=>user.role==="INVESTOR"?investorOnly.includes(i[0]):user.role==="OWNER"||!ownerOnly.includes(i[0]));if(!visible.length)return null;const isOpen=opened[group.id]||group.id===activeGroup;const GroupIcon=group.icon;return <section className="navGroup" key={group.id}>
     <button className="navGroupButton" onClick={()=>setOpened(v=>({...v,[group.id]:!isOpen}))}><GroupIcon size={16}/><span>{group.label}</span><ChevronDown size={15} className={isOpen?"rotated":""}/></button>
     <div className={isOpen?"navGroupItems expanded":"navGroupItems"}>{visible.map(([id,label,Icon])=><Link key={id} href={"/?tab="+id} className={tab===id?"active":""} onClick={()=>setMobileOpen(false)}><Icon size={18}/><span>{label}</span>{tab===id&&<i/>}</Link>)}</div>
    </section>})}</nav>
-   <div className="profile"><div className="avatar">{user.name[0]}</div><div><b>{user.name}</b><small>{user.role==="OWNER"?"Владелец":"Сотрудник"}</small></div><form action={logoutAction}><button aria-label="Выйти"><LogOut size={18}/></button></form></div>
+   <div className="profile"><div className="avatar">{user.name[0]}</div><div><b>{user.name}</b><small>{user.role==="OWNER"?"Владелец":user.role==="INVESTOR"?"Инвестор · просмотр":"Сотрудник"}</small></div><form action={logoutAction}><button aria-label="Выйти"><LogOut size={18}/></button></form></div>
   </aside>
  </>;
 }

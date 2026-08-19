@@ -1,0 +1,18 @@
+import Link from "next/link";
+import AppNavigation from "./AppNavigation";
+import {getInvestorFinance,parseFinancialPeriod} from "@/lib/investor-finance";
+
+const money=(value:number)=>new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(value)+" с.";
+const date=(value:string)=>new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(value));
+
+export default async function InvestorDashboard({user,tab,from,to}:{user:{name:string};tab:string;from?:string;to?:string}){
+  const period=parseFinancialPeriod(from,to),data=await getInvestorFinance(period),activeTab=["finance","customers","reports"].includes(tab)?tab:"finance";
+  return <div className="shell"><AppNavigation tab={activeTab} user={{name:user.name,role:"INVESTOR"}}/><main>
+    <header><div><p className="eyebrow">КАБИНЕТ ИНВЕСТОРА · ТОЛЬКО ПРОСМОТР</p><h1>{activeTab==="customers"?"Клиенты и долги":activeTab==="reports"?"Финансовый отчёт":"Финансы"}</h1></div></header>
+    <section className="card"><form className="periodFilter"><label>С<input type="date" name="from" defaultValue={period.from.toISOString().slice(0,10)}/></label><label>По<input type="date" name="to" defaultValue={period.to.toISOString().slice(0,10)}/></label><input type="hidden" name="tab" value={activeTab}/><button>Показать период</button><Link className="ghostButton" href={`/?tab=${activeTab}`}>Текущий месяц</Link></form></section>
+    {activeTab!=="customers"&&<><section className="stats"><div className="stat"><small>Доходы</small><b>{money(data.summary.income)}</b></div><div className="stat"><small>Расходы</small><b>{money(data.summary.expenses)}</b></div><div className="stat"><small>Финансовый результат</small><b className={data.summary.profit<0?"red":""}>{money(data.summary.profit)}</b></div><div className="stat"><small>Получено денег</small><b>{money(data.summary.received)}</b></div><div className="stat"><small>Нам должны</small><b>{money(data.summary.receivable)}</b></div><div className="stat"><small>Мы должны</small><b>{money(data.summary.payable)}</b></div><div className="stat"><small>Продано в долг</small><b>{money(data.summary.soldOnCredit)}</b></div></section>
+    <section className="card tableCard"><h3>История оплат</h3><table><thead><tr><th>Дата</th><th>Клиент</th><th>Способ</th><th>Сумма</th></tr></thead><tbody>{data.payments.map(row=><tr key={row.id}><td>{date(row.date)}</td><td>{row.customer.name}</td><td>{row.method==="CASH"?"Наличные":"Перевод"}</td><td>{money(row.amount)}</td></tr>)}</tbody></table></section>
+    <section className="card tableCard"><h3>Расходы</h3><table><thead><tr><th>Дата</th><th>Категория</th><th>Описание</th><th>Сумма</th></tr></thead><tbody>{data.expenses.map(row=><tr key={row.id}><td>{date(row.date)}</td><td>{row.category}</td><td>{row.note||"—"}</td><td className="red">{money(row.amount)}</td></tr>)}</tbody></table></section></>}
+    {activeTab==="customers"&&<><section className="card tableCard"><h3>Клиенты: покупки и задолженность</h3><table><thead><tr><th>Клиент</th><th>Телефон</th><th>Всего покупок</th><th>Долг</th></tr></thead><tbody>{data.customers.map(row=><tr key={row.id}><td><b>{row.name}</b></td><td>{row.phone||"—"}</td><td>{money(row.sales)}</td><td className={row.debt>0?"red":""}>{money(row.debt)}</td></tr>)}</tbody></table></section><section className="card tableCard"><h3>Кому должна пекарня</h3><table><thead><tr><th>Получатель</th><th>Сумма долга</th></tr></thead><tbody>{data.suppliers.map(row=><tr key={row.id}><td>{row.name}</td><td className="red">{money(row.debt)}</td></tr>)}</tbody></table></section></>}
+  </main></div>;
+}

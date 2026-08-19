@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   OWNER
   WORKER
+  INVESTOR
 }
 
 enum Unit {
