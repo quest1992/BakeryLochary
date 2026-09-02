@@ -16,19 +16,25 @@ export function parseFinancialPeriod(from?: string, to?: string): FinancialPerio
 export async function getInvestorFinance(period: FinancialPeriod) {
   const range = {gte: period.from, lte: period.to};
   const now=new Date(),monthFrom=new Date(now.getFullYear(),now.getMonth(),1),monthRange={gte:monthFrom,lte:now};
-  const [shipments, expenses, payments, customers, supplierDebts, paymentHistory, investmentAgreement,monthShipments,monthExpenses] = await Promise.all([
-    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:range},select:{total:true,paidAmount:true,items:{select:{quantity:true,costPrice:true}}}}),
+  const [shipments, expenses, payments, customers, supplierDebts, paymentHistory, investmentAgreement,monthShipments,monthExpenses,productMovements,products] = await Promise.all([
+    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:range},select:{id:true,total:true,paidAmount:true,items:{select:{productId:true,quantity:true,costPrice:true}}}}),
     db.expense.findMany({where:{spentAt:range},select:{id:true,category:true,amount:true,note:true,spentAt:true,user:{select:{name:true}}},orderBy:{spentAt:"desc"}}),
     db.payment.findMany({where:{paidAt:range},select:{amount:true}}),
     db.customer.findMany({select:{id:true,name:true,phone:true,shipments:{where:{status:"DELIVERED"},select:{total:true,paidAmount:true}},debts:{select:{amount:true,paidAmount:true}}},orderBy:{name:"asc"}}),
     db.supplierDebt.findMany({select:{amount:true,paidAmount:true,supplier:{select:{id:true,name:true}}}}),
     db.payment.findMany({where:{paidAt:range},select:{id:true,amount:true,method:true,paidAt:true,note:true,customer:{select:{id:true,name:true}},shipment:{select:{id:true,deliveredAt:true}},customerDebt:{select:{id:true}}},orderBy:{paidAt:"desc"},take:500}),
     db.investmentAgreement.findUnique({where:{id:1},select:{investorName:true,principal:true,initialShare:true,startedAt:true,note:true,buybacks:{select:{id:true,amount:true,paidAt:true,note:true},orderBy:{paidAt:"desc"}}}}),
-    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:monthRange},select:{total:true,deliveredAt:true,items:{select:{quantity:true,costPrice:true}}}}),
+    db.shipment.findMany({where:{status:"DELIVERED",deliveredAt:monthRange},select:{id:true,total:true,deliveredAt:true,items:{select:{productId:true,quantity:true,costPrice:true}}}}),
     db.expense.findMany({where:{spentAt:monthRange},select:{amount:true,spentAt:true}}),
+    db.productMovement.findMany({where:{type:{in:["RETURN","WRITE_OFF"]},createdAt:{lte:period.to>now?period.to:now}},select:{productId:true,shipmentId:true,type:true,quantity:true,createdAt:true}}),
+    db.product.findMany({select:{id:true,costPrice:true}}),
   ]);
+  const productCost=new Map(products.map(row=>[row.id,row.costPrice]));
+  const returnStats=(rows:{id:number;items:{productId:number;costPrice:number}[]}[])=>{const ids=new Set(rows.map(row=>row.id)),movements=productMovements.filter(row=>row.type==="RETURN"&&row.shipmentId&&ids.has(row.shipmentId));return{quantity:movements.reduce((sum,row)=>sum+row.quantity,0),cost:movements.reduce((sum,row)=>{const shipment=rows.find(item=>item.id===row.shipmentId),line=shipment?.items.find(item=>item.productId===row.productId);return sum+row.quantity*(line?.costPrice??productCost.get(row.productId)??0)},0)}};
+  const writeOffStats=(from:Date,to:Date)=>{const movements=productMovements.filter(row=>row.type==="WRITE_OFF"&&row.createdAt>=from&&row.createdAt<=to);return{quantity:movements.reduce((sum,row)=>sum+Math.abs(row.quantity),0),cost:movements.reduce((sum,row)=>sum+Math.abs(row.quantity)*(productCost.get(row.productId)||0),0)}};
+  const periodReturns=returnStats(shipments),periodWriteOffs=writeOffStats(period.from,period.to);
   const income = shipments.reduce((sum,row)=>sum+row.total,0);
-  const cogs = shipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0);
+  const cogs = shipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0)-periodReturns.cost;
   const expenseTotal = expenses.reduce((sum,row)=>sum+row.amount,0);
   const customerRows = customers.map(customer=>({
     id: customer.id,
@@ -43,10 +49,10 @@ export async function getInvestorFinance(period: FinancialPeriod) {
     current.debt+=Math.max(0,row.amount-row.paidAmount);supplierMap.set(current.id,current);
   }
   const investment=investmentAgreement?{...investmentAgreement,...calculateInvestment(investmentAgreement.principal,investmentAgreement.initialShare,investmentAgreement.buybacks.map(row=>row.amount)),startedAt:investmentAgreement.startedAt.toISOString(),buybacks:investmentAgreement.buybacks.map(row=>({...row,paidAt:row.paidAt.toISOString()}))}:null;
-  const monthIncome=monthShipments.reduce((sum,row)=>sum+row.total,0),monthCost=monthShipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0),monthExpense=monthExpenses.reduce((sum,row)=>sum+row.amount,0),monthProfit=monthIncome-monthCost-monthExpense,officialStart=investmentAgreement?.startedAt,eligibleShipments=officialStart?monthShipments.filter(row=>row.deliveredAt>=officialStart):[],eligibleExpenses=officialStart?monthExpenses.filter(row=>row.spentAt>=officialStart):[],eligibleProfit=eligibleShipments.reduce((sum,row)=>sum+row.total-row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0)-eligibleExpenses.reduce((sum,row)=>sum+row.amount,0),investmentActive=Boolean(officialStart&&officialStart<=now);
+  const monthReturns=returnStats(monthShipments),monthWriteOffs=writeOffStats(monthFrom,now),monthIncome=monthShipments.reduce((sum,row)=>sum+row.total,0),monthCost=monthShipments.reduce((sum,row)=>sum+row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0)-monthReturns.cost,monthExpense=monthExpenses.reduce((sum,row)=>sum+row.amount,0),monthProfit=monthIncome-monthCost-monthExpense-monthWriteOffs.cost,officialStart=investmentAgreement?.startedAt,eligibleShipments=officialStart?monthShipments.filter(row=>row.deliveredAt>=officialStart):[],eligibleExpenses=officialStart?monthExpenses.filter(row=>row.spentAt>=officialStart):[],eligibleReturns=returnStats(eligibleShipments),eligibleWriteOffs=officialStart?writeOffStats(officialStart>monthFrom?officialStart:monthFrom,now):{quantity:0,cost:0},eligibleProfit=eligibleShipments.reduce((sum,row)=>sum+row.total-row.items.reduce((itemSum,item)=>itemSum+item.quantity*item.costPrice,0),0)+eligibleReturns.cost-eligibleExpenses.reduce((sum,row)=>sum+row.amount,0)-eligibleWriteOffs.cost,investmentActive=Boolean(officialStart&&officialStart<=now);
   return {
     period:{from:period.from.toISOString(),to:period.to.toISOString()},
-    summary:{income,expenses:expenseTotal,costOfSales:cogs,profit:income-cogs-expenseTotal,received:payments.reduce((sum,row)=>sum+row.amount,0),soldOnCredit:shipments.reduce((sum,row)=>sum+Math.max(0,row.total-row.paidAmount),0),receivable:customerRows.reduce((sum,row)=>sum+row.debt,0),payable:[...supplierMap.values()].reduce((sum,row)=>sum+row.debt,0)},
+    summary:{income,expenses:expenseTotal,costOfSales:cogs,profit:income-cogs-expenseTotal-periodWriteOffs.cost,received:payments.reduce((sum,row)=>sum+row.amount,0),soldOnCredit:shipments.reduce((sum,row)=>sum+Math.max(0,row.total-row.paidAmount),0),receivable:customerRows.reduce((sum,row)=>sum+row.debt,0),payable:[...supplierMap.values()].reduce((sum,row)=>sum+row.debt,0),returns:periodReturns,writeOffs:periodWriteOffs},
     customers:customerRows,
     suppliers:[...supplierMap.values()].filter(row=>row.debt>0),
     expenses:expenses.map(row=>({id:row.id,category:row.category,amount:row.amount,note:row.note,date:row.spentAt.toISOString(),recordedBy:row.user.name})),
