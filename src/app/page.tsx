@@ -1,40 +1,2030 @@
-import Link from"next/link";import AppNavigation from"@/components/AppNavigation";import AnalyticsDashboard from"@/components/AnalyticsDashboard";import InvestorDashboard from"@/components/InvestorDashboard";import InvestmentManagement from"@/components/InvestmentManagement";import DeleteRecipeItem from"@/components/DeleteRecipeItem";import ShipmentComposer from"@/components/ShipmentComposer";import PurchaseComposer from"@/components/PurchaseComposer";import SupplyMobile from"@/components/SupplyMobile";import{redirect}from"next/navigation";import{db}from"@/lib/db";import{getUser}from"@/lib/auth";import{produceAction,paymentAction,openingDebtAction,laborExpenseAction,expenseAction,ingredientAction,createIngredientAction,updateIngredientAction,adjustIngredientAction,toggleIngredientAction,returnShipmentItemAction,writeOffProductAction,customerAction,productAction,recipeAction,updateProductAction,toggleProductAction,updateCustomerAction,toggleCustomerAction,createSupplierAction,updateSupplierAction,toggleSupplierAction,addSupplierDebtAction,paySupplierAction,createUserAction,updateUserAction,toggleUserAction,resetUserPasswordAction,changeOwnPasswordAction}from"./actions";
-import{LayoutDashboard,Package,Factory,Truck,Users,WalletCards,Wheat,ClipboardList,Plus,ArrowUpRight,AlertTriangle,Gift,Building2,ShieldCheck,Database,Printer,ShoppingCart}from"lucide-react";
-import{calculateCustomerDemand}from"@/lib/customer-demand";
-import{splitCustomerDebt}from"@/lib/customer-debt";
-const money=(v:number)=>new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(v)+" с.";
-const unitMoney=(v:number)=>new Intl.NumberFormat("ru-RU",{minimumFractionDigits:0,maximumFractionDigits:5}).format(v)+" с.";
-const dt=(d:Date)=>new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}).format(d);
-const nav=[["dashboard","Обзор",LayoutDashboard],["expedition","Экспедитор",Truck],["production","Производство",Factory],["stock","Готовая продукция",Package],["ingredients","Сырьё",Wheat],["products","Продукция",ClipboardList],["recipes","Рецептуры",ClipboardList],["customers","Клиенты",Users],["shipments","Отгрузки",Truck],["reconciliation","Сверка",ClipboardList],["procurement","Снабженец",ShoppingCart],["suppliers","Поставщики",Building2],["team","Команда",ShieldCheck],["finance","Финансы",WalletCards],["reports","Аналитика",ArrowUpRight]] as const;
-function Field({label,children}:{label:string,children:React.ReactNode}){return <label>{label}{children}</label>}
-function FormBox({title,children,action}:{title:string,children:React.ReactNode,action:(f:FormData)=>void}){return <form action={action} className="card formBox"><h3>{title}</h3><div className="formGrid">{children}</div><button><Plus size={17}/>Сохранить</button></form>}
-export default async function Home({searchParams}:{searchParams:Promise<{tab?:string;ok?:string;period?:string;from?:string;to?:string;cutoff?:string;customerId?:string}>}){
- const user=await getUser();if(!user)redirect("/login");const q=await searchParams,tab=q.tab||"dashboard";if(user.role==="INVESTOR")return <InvestorDashboard user={{name:user.name}} tab={tab} from={q.from} to={q.to}/>;const now=new Date(),day=new Date(now.getFullYear(),now.getMonth(),now.getDate()),week=new Date(now);week.setDate(now.getDate()-6);const month=new Date(now.getFullYear(),now.getMonth(),1);
- const demandFrom=new Date(day);demandFrom.setDate(day.getDate()-7);const defaultCutoff=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`,cutoffValue=/^\d{4}-\d{2}-\d{2}$/.test(q.cutoff||"")?q.cutoff!:defaultCutoff,[cutoffYear,cutoffMonth,cutoffDay]=cutoffValue.split("-").map(Number),cutoffDate=new Date(cutoffYear,cutoffMonth-1,cutoffDay),cutoffLabel=new Intl.DateTimeFormat("ru-RU").format(cutoffDate);
- const [products,ingredients,customers,shipments,batches,payments,expenses,movements,suppliers,purchases,users,productMovements,demandShipments]=await Promise.all([db.product.findMany({include:{stock:true,recipes:{include:{ingredient:true}}},orderBy:{name:"asc"}}),db.ingredient.findMany({orderBy:{name:"asc"}}),db.customer.findMany({include:{shipments:true,payments:true,debts:true},orderBy:{name:"asc"}}),db.shipment.findMany({include:{customer:true,items:{include:{product:true}}},orderBy:{deliveredAt:"desc"},take:30}),db.productionBatch.findMany({include:{product:true,user:true},orderBy:{producedAt:"desc"},take:20}),db.payment.findMany({orderBy:{paidAt:"desc"},take:30}),db.expense.findMany({include:{user:true},orderBy:{spentAt:"desc"},take:50}),db.ingredientMovement.findMany({include:{ingredient:true},orderBy:{createdAt:"desc"},take:50}),db.supplier.findMany({include:{debts:{orderBy:{debtDate:"desc"}},payments:true},orderBy:{name:"asc"}}),db.purchase.findMany({include:{supplier:true,user:true,items:{include:{ingredient:true}}},orderBy:{purchasedAt:"desc"},take:40}),db.user.findMany({orderBy:{name:"asc"}}),db.productMovement.findMany({orderBy:{createdAt:"desc"},take:500}),db.shipment.findMany({where:{deliveredAt:{gte:demandFrom}},include:{customer:true,items:{include:{product:true}}},orderBy:{deliveredAt:"desc"}})]);
- const todayValue=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`,reconFrom=/^\d{4}-\d{2}-\d{2}$/.test(q.from||"")?q.from!:defaultCutoff,reconTo=/^\d{4}-\d{2}-\d{2}$/.test(q.to||"")?q.to!:todayValue,reconCustomerId=Number(q.customerId)||customers.find(c=>c.active)?.id||customers[0]?.id||0,parseDay=(value:string)=>{const[y,m,d]=value.split("-").map(Number);return new Date(y,m-1,d)},reconStart=parseDay(reconFrom),reconEnd=parseDay(reconTo);reconEnd.setDate(reconEnd.getDate()+1);const reconciliationShipments=tab==="reconciliation"&&reconCustomerId?await db.shipment.findMany({where:{customerId:reconCustomerId,status:"DELIVERED",deliveredAt:{gte:reconStart,lt:reconEnd}},include:{items:{include:{product:true}}},orderBy:{deliveredAt:"asc"}}):[];
- const todayShip=shipments.filter(x=>x.deliveredAt>=day),revenue=todayShip.reduce((a,x)=>a+x.total,0),received=payments.filter(x=>x.paidAt>=day).reduce((a,x)=>a+x.amount,0),todayExpense=expenses.filter(x=>x.spentAt>=day).reduce((a,x)=>a+x.amount,0),debt=customers.reduce((a,c)=>a+c.shipments.reduce((s,x)=>s+Math.max(0,x.total-x.paidAmount),0)+c.debts.reduce((s,x)=>s+Math.max(0,x.amount-x.paidAmount),0),0),low=ingredients.filter(x=>x.stock<=x.minStock);
- const report=(from:Date)=>{const ss=shipments.filter(x=>x.deliveredAt>=from),pp=payments.filter(x=>x.paidAt>=from),ee=expenses.filter(x=>x.spentAt>=from),bb=batches.filter(x=>x.producedAt>=from),returns=productMovements.filter(x=>x.type==="RETURN"&&x.createdAt>=from),writeOffs=productMovements.filter(x=>x.type==="WRITE_OFF"&&x.createdAt>=from),sales=ss.reduce((a,x)=>a+x.total,0),cogs=ss.reduce((sum,s)=>sum+s.items.reduce((z,i)=>{const returned=productMovements.filter(m=>m.type==="RETURN"&&m.shipmentId===s.id&&m.productId===i.productId).reduce((a,m)=>a+m.quantity,0);return z+Math.max(0,i.quantity-returned)*(i.costPrice||i.product.costPrice)},0),0),expense=ee.reduce((a,x)=>a+x.amount,0),returnCost=returns.reduce((sum,m)=>{const line=shipments.find(s=>s.id===m.shipmentId)?.items.find(i=>i.productId===m.productId);return sum+m.quantity*(line?.costPrice||products.find(p=>p.id===m.productId)?.costPrice||0)},0),writeOffCost=writeOffs.reduce((sum,m)=>sum+Math.abs(m.quantity)*(products.find(p=>p.id===m.productId)?.costPrice||0),0);return{sales,cogs,gross:sales-cogs,paid:pp.reduce((a,x)=>a+x.amount,0),expense,net:sales-cogs-expense-writeOffCost,made:bb.reduce((a,x)=>a+x.quantity,0),returned:returns.reduce((a,x)=>a+x.quantity,0),returnCost,writtenOff:writeOffs.reduce((a,x)=>a+Math.abs(x.quantity),0),writeOffCost}};
- const periods=[["Сегодня",report(day)],["7 дней",report(week)],["Месяц",report(month)]] as const;
- const dailySales=Array.from({length:7},(_,index)=>{const date=new Date(day);date.setDate(day.getDate()-6+index);const next=new Date(date);next.setDate(date.getDate()+1);return{label:new Intl.DateTimeFormat("ru-RU",{weekday:"short"}).format(date).replace(".",""),value:shipments.filter(s=>s.deliveredAt>=date&&s.deliveredAt<next).reduce((sum,s)=>sum+s.total,0)}});
- const productSales=products.map(product=>({label:product.name,value:shipments.flatMap(s=>s.items).filter(i=>i.productId===product.id).reduce((sum,i)=>sum+i.quantity*i.price,0)})).filter(x=>x.value>0).sort((a,b)=>b.value-a.value).slice(0,5);
- const expenseCategories=Object.entries(expenses.filter(e=>e.spentAt>=month).reduce<Record<string,number>>((all,e)=>({...all,[e.category]:(all[e.category]||0)+e.amount}),{})).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,5);
- const customerDebts=customers.map(c=>({label:c.name,value:c.shipments.reduce((sum,s)=>sum+Math.max(0,s.total-s.paidAmount),0)+c.debts.reduce((sum,d)=>sum+Math.max(0,d.amount-d.paidAmount),0)})).filter(x=>x.value>0).sort((a,b)=>b.value-a.value).slice(0,5);
- const customerDemand=calculateCustomerDemand(demandShipments.map(s=>({customerId:s.customerId,customerName:s.customer.name,deliveredAt:s.deliveredAt,items:s.items.map(i=>({productId:i.productId,productName:i.product.name,quantity:i.quantity}))})),now);
- return <div className="shell"><AppNavigation tab={tab} user={{name:user.name,role:user.role}}/>
- <main><header><div className="pageHeading"><div className="dateTile"><b>{new Intl.DateTimeFormat("ru-RU",{day:"2-digit"}).format(now)}</b><span>{new Intl.DateTimeFormat("ru-RU",{month:"short"}).format(now).replace(".","")}</span></div><div><p className="eyebrow">{new Intl.DateTimeFormat("ru-RU",{weekday:"long",year:"numeric"}).format(now).toUpperCase()}</p><h1>{nav.find(x=>x[0]===tab)?.[1]||"Обзор"}</h1></div></div><Link className="quick" href="/?tab=expedition"><Truck size={18}/>Быстрая отгрузка</Link></header>{q.ok&&<div className="success">✓ {q.ok}</div>}
- {(tab==="dashboard")&&<><section className="hero"><div><span>Сегодня в пекарне</span><strong>{money(revenue)}</strong><small>отгружено · получено {money(received)}</small></div><div className="heroBread">☼</div></section><section className="stats"><div className="stat"><small>Произведено</small><b>{batches.filter(x=>x.producedAt>=day).reduce((a,x)=>a+x.quantity,0)} шт.</b><span>за сегодня</span></div><div className="stat"><small>На складе</small><b>{products.reduce((a,x)=>a+(x.stock?.quantity||0),0)} шт.</b><span>{products.length} вида продукции</span></div><div className="stat"><small>Общий долг</small><b>{money(debt)}</b><span>по всем клиентам</span></div><div className="stat"><small>Расходы сегодня</small><b>{money(todayExpense)}</b><span>чистый поток {money(received-todayExpense)}</span></div></section><div className="two"><section className="card"><div className="cardHead"><h3>Последние отгрузки</h3><Link href="/?tab=shipments">Все</Link></div><div className="list">{shipments.slice(0,5).map(s=><div className="row" key={s.id}><div className="dot">№</div><div><b>{s.customer.name}</b><small>{dt(s.deliveredAt)} · {s.items.reduce((a,i)=>a+i.quantity,0)} шт.</small></div><strong>{money(s.total)}</strong></div>)}</div></section><section className="card"><div className="cardHead"><h3>Внимание</h3><span className="badge">{low.length}</span></div>{low.length?<div className="list">{low.map(i=><div className="row" key={i.id}><div className="warn"><AlertTriangle size={18}/></div><div><b>{i.name}</b><small>{i.stock<0?"Требуется пополнение":"Минимум: "+i.minStock+" "+i.unit}</small></div><strong className={i.stock<0?"red":""}>{i.stock.toFixed(1)}</strong></div>)}</div>:<p className="empty">Остатков сырья достаточно</p>}</section></div></>}
- {(tab==="expedition"||tab==="shipments")&&<><ShipmentComposer compact={tab==="expedition"} customers={customers.filter(c=>c.active).map(c=>({id:c.id,name:c.name}))} products={products.filter(p=>p.active).map(p=>({id:p.id,name:p.name,price:p.price,stock:p.stock?.quantity||0}))}/><section className="card tableCard"><h3>История отгрузок и возвраты</h3><table><thead><tr><th>Дата</th><th>Клиент</th><th>Состав</th><th>Сумма</th><th>Долг</th><th>Возврат</th></tr></thead><tbody>{shipments.map(s=><tr key={s.id}><td>{dt(s.deliveredAt)}</td><td><b>{s.customer.name}</b></td><td>{s.items.map(i=><div className="shipmentItem" key={i.id}>{i.product.name} × {i.quantity}</div>)}</td><td>{money(s.total)}</td><td className={s.total>s.paidAmount?"red":""}>{money(Math.max(0,s.total-s.paidAmount))}</td><td><Link className="printLink" href={"/shipments/"+s.id+"/print"} target="_blank"><Printer size={14}/>Печать</Link><details><summary>Возврат</summary>{s.items.map(i=><form action={returnShipmentItemAction} className="returnForm" key={i.id}><input type="hidden" name="shipmentId" value={s.id}/><input type="hidden" name="productId" value={i.productId}/><small>{i.product.name}</small><input name="quantity" type="number" min="1" max={i.quantity} defaultValue="1" aria-label="Количество возврата"/><input name="note" placeholder="Причина" aria-label="Причина возврата"/><button>Вернуть</button></form>)}</details></td></tr>)}</tbody></table></section></>}
- {tab==="reconciliation"&&<><section className="card reconciliationFilter"><div><p className="eyebrow">СВЕРКА С МАГАЗИНОМ</p><h3>Выберите магазин и период</h3></div><form method="get" className="periodFilter"><input type="hidden" name="tab" value="reconciliation"/><Field label="Магазин"><select name="customerId" defaultValue={reconCustomerId}>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="С какого числа"><input name="from" type="date" defaultValue={reconFrom} max={reconTo}/></Field><Field label="До какого числа"><input name="to" type="date" defaultValue={reconTo} min={reconFrom}/></Field><button>Показать</button></form></section><section className="stats reconciliationTotals"><div className="stat"><small>Накладных</small><b>{reconciliationShipments.length}</b></div><div className="stat"><small>Общая сумма</small><b>{money(reconciliationShipments.reduce((sum,s)=>sum+s.total,0))}</b></div><div className="stat"><small>Оплачено по накладным</small><b>{money(reconciliationShipments.reduce((sum,s)=>sum+s.paidAmount,0))}</b></div><div className="stat"><small>Остаток</small><b className={reconciliationShipments.some(s=>s.total>s.paidAmount)?"red":""}>{money(reconciliationShipments.reduce((sum,s)=>sum+Math.max(0,s.total-s.paidAmount),0))}</b></div></section><section className="card tableCard"><h3>Список накладных</h3>{reconciliationShipments.length?<table><thead><tr><th>Дата</th><th>№ накладной</th><th>Товары</th><th>Сумма</th><th>Оплачено</th><th>Остаток</th><th></th></tr></thead><tbody>{reconciliationShipments.map(s=><tr key={s.id}><td>{dt(s.deliveredAt)}</td><td><b>№ {s.id}</b></td><td>{s.items.map(i=><div className="shipmentItem" key={i.id}>{i.product.name} × {i.quantity}</div>)}</td><td>{money(s.total)}</td><td>{money(s.paidAmount)}</td><td className={s.total>s.paidAmount?"red":""}>{money(Math.max(0,s.total-s.paidAmount))}</td><td><Link className="printLink" href={"/shipments/"+s.id+"/print"} target="_blank"><Printer size={14}/>Открыть</Link></td></tr>)}</tbody></table>:<p className="empty">За выбранный период накладных нет</p>}</section></>}
- {tab==="production"&&<><FormBox title="Выпустить партию" action={produceAction}><Field label="Продукция"><select name="productId">{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Выпечено всего, шт."><input name="quantity" type="number" min="1" defaultValue="20" required/></Field><Field label="Брак, шт."><input name="defectiveQuantity" type="number" min="0" defaultValue="0" required/></Field><Field label="Примечание"><input name="note" placeholder="Например, утренняя смена"/></Field></FormBox><section className="card tableCard"><h3>Последние партии</h3><table><thead><tr><th>Дата</th><th>Продукция</th><th>Выпечено всего</th><th>Сотрудник</th></tr></thead><tbody>{batches.map(b=><tr key={b.id}><td>{dt(b.producedAt)}</td><td><b>{b.product.name}</b></td><td>{b.quantity} шт.</td><td>{b.user.name}</td></tr>)}</tbody></table></section></>}
- {tab==="stock"&&<><FormBox title="Списать готовую продукцию" action={writeOffProductAction}><Field label="Продукция"><select name="productId">{products.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.name} · остаток {p.stock?.quantity||0}</option>)}</select></Field><Field label="Количество"><input name="quantity" type="number" min="1" required/></Field><Field label="Причина"><input name="note" required placeholder="Порча, брак, дегустация..."/></Field></FormBox><section className="productGrid">{products.map(p=><article className="productCard" key={p.id}><div className="breadIcon">◉</div><small>{p.sku}</small><h3>{p.name}</h3><strong>{p.stock?.quantity||0}<span> шт.</span></strong><p>{money(p.price)} за штуку · себестоимость {money(p.costPrice)}</p></article>)}</section></>}
- {tab==="ingredients"&&<><div className="two"><FormBox title="Новое сырьё" action={createIngredientAction}><Field label="Название"><input name="name" required placeholder="Например, соль"/></Field><Field label="Единица"><select name="unit"><option value="KG">кг</option><option value="G">г</option><option value="L">л</option><option value="ML">мл</option><option value="PCS">шт.</option></select></Field><Field label="Начальный остаток"><input name="stock" type="number" step=".001" min="0" defaultValue="0" required/></Field><Field label="Минимальный остаток"><input name="minStock" type="number" step=".001" min="0" defaultValue="0" required/></Field><Field label="Целевой запас"><input name="targetStock" type="number" step=".001" min="0" defaultValue="0" required/></Field><Field label="Цена закупки за единицу"><input name="purchasePrice" type="number" step=".00001" min="0" defaultValue="0" required/></Field></FormBox><FormBox title="Приход сырья" action={ingredientAction}><Field label="Сырьё"><select name="ingredientId">{ingredients.filter(i=>i.active).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></Field><Field label="Количество"><input name="quantity" type="number" step="0.001" min=".001" required/></Field><Field label="Примечание"><input name="note" placeholder="Поставщик или накладная"/></Field></FormBox></div><section className="ingredientGrid">{ingredients.map(i=><article className={"card ingredientCard "+(!i.active?"archived ":"")+(i.stock<0?"negativeStock":"")} key={i.id}><div className="cardHead"><div><small>{i.active?"АКТИВНО":"В АРХИВЕ"}</small><h3>{i.name}</h3></div><span className={i.stock<=i.minStock?"status bad":"status"}>{i.stock<0?"Требуется пополнение":i.stock<=i.minStock?"Заканчивается":"Достаточно"}</span></div><p className={"bigStock "+(i.stock<0?"red":"")}>{i.stock.toFixed(3)} <span>{i.unit}</span></p>{i.stock<0&&<p className="stockWarning"><AlertTriangle size={15}/>Остаток отрицательный — требуется пополнение</p>}<p className="mutedLine">Минимум {i.minStock} · закупка {unitMoney(i.purchasePrice)}</p><details><summary>Редактировать карточку</summary><form action={updateIngredientAction} className="miniForm"><input type="hidden" name="id" value={i.id}/><Field label="Название"><input name="name" defaultValue={i.name} required/></Field><Field label="Единица"><select name="unit" defaultValue={i.unit}><option value="KG">кг</option><option value="G">г</option><option value="L">л</option><option value="ML">мл</option><option value="PCS">шт.</option></select></Field><Field label="Минимум"><input name="minStock" type="number" step=".001" min="0" defaultValue={i.minStock}/></Field><Field label="Целевой запас"><input name="targetStock" type="number" step=".001" min="0" defaultValue={i.targetStock}/></Field><Field label="Цена"><input name="purchasePrice" type="number" step=".00001" min="0" defaultValue={i.purchasePrice}/></Field><button>Сохранить</button></form></details><details><summary>Инвентаризация / корректировка</summary><form action={adjustIngredientAction} className="miniForm"><input type="hidden" name="id" value={i.id}/><Field label="Фактически на складе"><input name="actual" type="number" step=".001" min="0" defaultValue={i.stock} required/></Field><Field label="Причина"><input name="note" required placeholder="Пересчёт, порча..."/></Field><button>Записать остаток</button></form></details><form action={toggleIngredientAction}><input type="hidden" name="id" value={i.id}/><button className="ghostButton">{i.active?"Перенести в архив":"Восстановить"}</button></form></article>)}</section><section className="card tableCard"><h3>История движения сырья</h3><table><thead><tr><th>Дата</th><th>Сырьё</th><th>Операция</th><th>Изменение</th><th>Примечание</th></tr></thead><tbody>{movements.map(m=><tr key={m.id}><td>{dt(m.createdAt)}</td><td><b>{m.ingredient.name}</b></td><td>{m.type==="PURCHASE"?"Приход":m.type==="PRODUCTION_USE"?"Списание в производство":"Корректировка"}</td><td className={m.quantity<0?"red":""}>{m.quantity>0?"+":""}{m.quantity.toFixed(3)} {m.ingredient.unit}</td><td>{m.note||"—"}</td></tr>)}</tbody></table></section></>}
- {tab==="products"&&<><FormBox title="Добавить продукцию" action={productAction}><Field label="Название"><input name="name" required/></Field><Field label="Артикул"><input name="sku" required/></Field><Field label="Цена продажи"><input name="price" type="number" step=".01" required/></Field><Field label="Начальная себестоимость"><input name="costPrice" type="number" step=".01" required/></Field></FormBox><section className="managementGrid">{products.map(p=><article className={"card manageCard "+(!p.active?"archived":"")} key={p.id}><div className="cardHead"><div><small>{p.active?"АКТИВНО":"В АРХИВЕ"} · {p.sku}</small><h3>{p.name}</h3></div><strong>{money(p.price)}</strong></div><p>Себестоимость: <b>{money(p.costPrice)}</b> · маржа {p.price?Math.round((p.price-p.costPrice)/p.price*100):0}%</p><details><summary>Редактировать</summary><form action={updateProductAction} className="miniForm"><input type="hidden" name="id" value={p.id}/><Field label="Название"><input name="name" defaultValue={p.name} required/></Field><Field label="Артикул"><input name="sku" defaultValue={p.sku} required/></Field><Field label="Цена продажи"><input name="price" type="number" step=".01" min="0" defaultValue={p.price} required/></Field><button>Сохранить</button></form></details><form action={toggleProductAction}><input type="hidden" name="id" value={p.id}/><button className="ghostButton">{p.active?"Архивировать":"Восстановить"}</button></form></article>)}</section></>}
- {tab==="recipes"&&<><FormBox title="Добавить или изменить ингредиент рецепта" action={recipeAction}><Field label="Продукция"><select name="productId">{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Ингредиент"><select name="ingredientId">{ingredients.map(i=><option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}</select></Field><Field label="На 1 штуку"><input name="quantity" type="number" step=".001" min=".001" required/></Field></FormBox><section className="productGrid">{products.map(p=><article className="productCard" key={p.id}><h3>{p.name}</h3>{p.recipes.length?p.recipes.map(r=><div className="recipeLine" key={r.id}><p>{r.ingredient.name}: <b>{r.quantity} {r.ingredient.unit}</b></p><DeleteRecipeItem id={r.id} name={r.ingredient.name}/></div>):<p className="emptyRecipe">Рецепт пока не заполнен</p>}</article>)}</section></>}
- {tab==="customers"&&<><section className="card debtCutoff"><div><p className="eyebrow">РАЗДЕЛЕНИЕ ЗАДОЛЖЕННОСТИ</p><h3>Долг до даты и после неё</h3><p>Учитываются остатки реальных отгрузок и старых долгов после распределённых оплат.</p></div><form method="get" className="periodFilter"><input type="hidden" name="tab" value="customers"/><Field label="Дата отсечения"><input name="cutoff" type="date" defaultValue={cutoffValue}/></Field><button>Показать</button></form></section><div className="two"><FormBox title="Новый клиент / точка" action={customerAction}><Field label="Название"><input name="name" required/></Field><Field label="Телефон"><input name="phone"/></Field><Field label="Адрес"><input name="address"/></Field><Field label="Лимит долга"><input name="creditLimit" type="number" defaultValue="500"/></Field></FormBox>{user.role==="OWNER"&&<FormBox title="Внести старый долг" action={openingDebtAction}><Field label="Клиент"><select name="customerId">{customers.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Сумма долга"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Дата долга"><input name="debtDate" type="date" defaultValue={new Date().toISOString().slice(0,10)} required/></Field><Field label="Примечание"><input name="note" defaultValue="Долг до начала учёта"/></Field></FormBox>}</div><section className="managementGrid">{customers.map(c=>{const openingDebt=c.debts.reduce((a,x)=>a+Math.max(0,x.amount-x.paidAmount),0),split=splitCustomerDebt([...c.shipments.filter(x=>x.status==="DELIVERED").map(x=>({amount:x.total,paidAmount:x.paidAmount,date:x.deliveredAt})),...c.debts.map(x=>({amount:x.amount,paidAmount:x.paidAmount,date:x.debtDate}))],cutoffDate);return <article className={"card manageCard "+(!c.active?"archived":"")} key={c.id}><div className="cardHead"><div><small>{c.active?"АКТИВЕН":"В АРХИВЕ"}</small><h3>{c.name}</h3></div><span className="bonus"><Gift size={14}/>{c.bonusPoints}</span></div><p>{c.phone||"Телефон не указан"} · {c.address||"Адрес не указан"}</p><div className="manageStats debtStats"><span>Долг до {cutoffLabel} <b className={split.before>0?"red":""}>{money(split.before)}</b></span><span>Долг после {cutoffLabel} <b className={split.after>0?"red":""}>{money(split.after)}</b><small>включая выбранную дату</small></span><span className="debtTotal">Общий долг <b className={split.total>0?"red":""}>{money(split.total)}</b>{openingDebt>0&&<small>из них внесённый старый долг: {money(openingDebt)}</small>}</span></div><details><summary>Редактировать</summary><form action={updateCustomerAction} className="miniForm"><input type="hidden" name="id" value={c.id}/><Field label="Название"><input name="name" defaultValue={c.name} required/></Field><Field label="Телефон"><input name="phone" defaultValue={c.phone||""}/></Field><Field label="Адрес"><input name="address" defaultValue={c.address||""}/></Field><Field label="Лимит долга"><input name="creditLimit" type="number" min="0" defaultValue={c.creditLimit}/></Field><button>Сохранить</button></form></details>{user.role==="OWNER"&&<form action={toggleCustomerAction}><input type="hidden" name="id" value={c.id}/><button className="ghostButton">{c.active?"Архивировать":"Восстановить"}</button></form>}</article>})}</section></>}
- {tab==="procurement"&&user.role==="OWNER"&&<SupplyMobile suppliers={suppliers.filter(s=>s.active).map(s=>({id:s.id,name:s.name}))} items={ingredients.filter(i=>i.active&&i.stock<=Math.max(i.minStock,i.minStock*1.25)).map(i=>({id:i.id,name:i.name,unit:i.unit,stock:i.stock,minStock:i.minStock,targetStock:i.targetStock,price:i.purchasePrice}))}/>}
- {tab==="suppliers"&&user.role==="OWNER"&&<><div className="two"><FormBox title="Новый поставщик" action={createSupplierAction}><Field label="Название"><input name="name" required/></Field><Field label="Телефон"><input name="phone"/></Field><Field label="Адрес"><input name="address"/></Field><Field label="Примечание"><input name="note"/></Field></FormBox><PurchaseComposer suppliers={suppliers.filter(s=>s.active).map(s=>({id:s.id,name:s.name}))} ingredients={ingredients.filter(i=>i.active).map(i=>({id:i.id,name:i.name,unit:i.unit,price:i.purchasePrice}))}/></div><div className="supplierDebtForms"><FormBox title="Добавить долг поставщику" action={addSupplierDebtAction}><Field label="Поставщик"><select name="supplierId">{suppliers.filter(s=>s.active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Field><Field label="Сумма долга"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Дата"><input name="debtDate" type="date" defaultValue={new Date().toISOString().slice(0,10)} required/></Field><Field label="За что должны"><input name="note" placeholder="Товар, накладная..."/></Field></FormBox><FormBox title="Оплатить поставщику" action={paySupplierAction}><Field label="Поставщик"><select name="supplierId">{suppliers.filter(s=>s.active&&s.debts.some(d=>d.amount>d.paidAmount)).map(s=><option key={s.id} value={s.id}>{s.name} · долг {money(s.debts.reduce((a,d)=>a+Math.max(0,d.amount-d.paidAmount),0))}</option>)}</select></Field><Field label="Сумма оплаты"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Способ"><select name="method"><option value="CASH">Наличные</option><option value="TRANSFER">Перевод</option></select></Field><Field label="Примечание"><input name="note" placeholder="Номер чека или комментарий"/></Field></FormBox></div><section className="managementGrid">{suppliers.map(s=>{const due=s.debts.reduce((a,d)=>a+Math.max(0,d.amount-d.paidAmount),0);return <article className={"card manageCard "+(!s.active?"archived":"")} key={s.id}><div className="cardHead"><div><small>{s.active?"АКТИВЕН":"В АРХИВЕ"}</small><h3>{s.name}</h3></div><span className={due>0?"supplierDue":"status"}>{due>0?"Долг "+money(due):"Долга нет"}</span></div><p>{s.phone||"Телефон не указан"} · {s.address||"Адрес не указан"}</p><p>{s.note}</p><details><summary>Редактировать</summary><form action={updateSupplierAction} className="miniForm"><input type="hidden" name="id" value={s.id}/><Field label="Название"><input name="name" defaultValue={s.name} required/></Field><Field label="Телефон"><input name="phone" defaultValue={s.phone||""}/></Field><Field label="Адрес"><input name="address" defaultValue={s.address||""}/></Field><Field label="Примечание"><input name="note" defaultValue={s.note||""}/></Field><button>Сохранить</button></form></details><form action={toggleSupplierAction}><input type="hidden" name="id" value={s.id}/><button className="ghostButton">{s.active?"Архивировать":"Восстановить"}</button></form></article>})}</section><section className="card tableCard"><h3>Долги поставщикам</h3><table><thead><tr><th>Дата</th><th>Поставщик</th><th>Основание</th><th>Сумма</th><th>Оплачено</th><th>Осталось</th></tr></thead><tbody>{suppliers.flatMap(s=>s.debts.map(d=><tr key={d.id}><td>{dt(d.debtDate)}</td><td><b>{s.name}</b></td><td>{d.note||"—"}</td><td>{money(d.amount)}</td><td>{money(d.paidAmount)}</td><td className={d.amount>d.paidAmount?"red":""}>{money(Math.max(0,d.amount-d.paidAmount))}</td></tr>))}</tbody></table></section><section className="card tableCard"><h3>Последние закупки</h3><table><thead><tr><th>Дата</th><th>Поставщик</th><th>Документ</th><th>Состав</th><th>Сумма</th><th>Принял</th></tr></thead><tbody>{purchases.map(p=><tr key={p.id}><td>{dt(p.purchasedAt)}</td><td><b>{p.supplier.name}</b></td><td>{p.invoiceNumber||"—"}</td><td>{p.items.map(i=>i.ingredient.name+" × "+i.quantity).join(", ")}</td><td>{money(p.total)}</td><td>{p.user.name}</td></tr>)}</tbody></table></section></>}
- {tab==="team"&&<><FormBox title="Изменить мой пароль" action={changeOwnPasswordAction}><Field label="Текущий пароль"><input name="current" type="password" required/></Field><Field label="Новый пароль"><input name="password" type="password" minLength={6} required/></Field></FormBox>{user.role==="OWNER"&&<><FormBox title="Добавить сотрудника" action={createUserAction}><Field label="Имя"><input name="name" required/></Field><Field label="Логин"><input name="username" required/></Field><Field label="Временный пароль"><input name="password" type="password" minLength={6} required/></Field><Field label="Роль"><select name="role"><option value="WORKER">Сотрудник</option><option value="INVESTOR">Инвестор (только финансы)</option><option value="OWNER">Владелец</option></select></Field></FormBox><section className="managementGrid">{users.map(u=><article className={"card manageCard "+(!u.active?"archived":"")} key={u.id}><div className="cardHead"><div className="teamPerson"><span className="avatar">{u.name[0]}</span><div><h3>{u.name}</h3><small>@{u.username} · {u.role==="OWNER"?"Владелец":u.role==="INVESTOR"?"Инвестор":"Сотрудник"}</small></div></div><span className={u.active?"status":"status bad"}>{u.active?"Доступ открыт":"Отключён"}</span></div><form action={updateUserAction} className="miniForm"><input type="hidden" name="id" value={u.id}/><Field label="Имя"><input name="name" defaultValue={u.name}/></Field><Field label="Роль"><select name="role" defaultValue={u.role}><option value="WORKER">Сотрудник</option><option value="INVESTOR">Инвестор (только финансы)</option><option value="OWNER">Владелец</option></select></Field><button>Обновить</button></form><form action={resetUserPasswordAction} className="inlineForm"><input type="hidden" name="id" value={u.id}/><input name="password" type="password" minLength={6} placeholder="Новый пароль" required/><button>Сменить пароль</button></form>{u.id!==user.id&&<form action={toggleUserAction}><input type="hidden" name="id" value={u.id}/><button className="ghostButton">{u.active?"Отключить доступ":"Восстановить доступ"}</button></form>}</article>)}</section><section className="card backupCard"><div><Database size={26}/><div><h3>Резервная копия базы</h3><p>Скачайте копию всех данных. Храните её на флешке или другом компьютере.</p></div></div><Link className="quick" href="/api/backup">Скачать копию</Link></section></>}</>}
- {tab==="finance"&&user.role==="OWNER"&&<><InvestmentManagement/><div className="financeForms"><FormBox title="Принять оплату" action={paymentAction}><Field label="Клиент"><select name="customerId">{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Сумма"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Способ"><select name="method"><option value="CASH">Наличные</option><option value="TRANSFER">Перевод</option></select></Field><Field label="Примечание"><input name="note"/></Field></FormBox><FormBox title="Оплата подённому работнику" action={laborExpenseAction}><Field label="Имя работника"><input name="workerName" required placeholder="Например, Фируз"/></Field><Field label="Дата работы"><input name="workDate" type="date" defaultValue={new Date().toISOString().slice(0,10)} required/></Field><Field label="Сумма оплаты"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Что выполнял"><input name="note" placeholder="Замес, выпечка, уборка..."/></Field></FormBox><FormBox title="Другой расход" action={expenseAction}><Field label="Категория"><select name="category"><option>Сырьё</option><option>Транспорт</option><option>Упаковка</option><option>Коммунальные</option><option>Ремонт</option><option>Прочее</option></select></Field><Field label="Сумма"><input name="amount" type="number" min=".01" step=".01" required/></Field><Field label="Примечание"><input name="note"/></Field></FormBox></div><section className="stats"><div className="stat"><small>Получено сегодня</small><b>{money(received)}</b></div><div className="stat"><small>Расходы сегодня</small><b>{money(todayExpense)}</b></div><div className="stat"><small>Нам должны клиенты</small><b>{money(debt)}</b></div><div className="stat"><small>Мы должны поставщикам</small><b>{money(suppliers.reduce((a,s)=>a+s.debts.reduce((x,d)=>x+Math.max(0,d.amount-d.paidAmount),0),0))}</b></div></section><section className="card tableCard"><h3>Последние расходы</h3><table><thead><tr><th>Дата</th><th>Категория</th><th>Описание / работник</th><th>Сумма</th><th>Записал</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{dt(e.spentAt)}</td><td><span className={e.category==="Оплата работников"?"expenseTag labor":"expenseTag"}>{e.category}</span></td><td>{e.note||"—"}</td><td className="red">{money(e.amount)}</td><td>{e.user.name}</td></tr>)}</tbody></table></section></>}
- {tab==="reports"&&user.role==="OWNER"&&<AnalyticsDashboard periods={periods.map(([name,r])=>({name,...r}))} dailySales={dailySales} products={productSales} expenses={expenseCategories} debts={customerDebts} demand={customerDemand}/>}
- </main></div>}
+import Link from "next/link";
+import AppNavigation from "@/components/AppNavigation";
+import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import InvestorDashboard from "@/components/InvestorDashboard";
+import InvestmentManagement from "@/components/InvestmentManagement";
+import DeleteRecipeItem from "@/components/DeleteRecipeItem";
+import ShipmentComposer from "@/components/ShipmentComposer";
+import PurchaseComposer from "@/components/PurchaseComposer";
+import SupplyMobile from "@/components/SupplyMobile";
+import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { getUser } from "@/lib/auth";
+import {
+  produceAction,
+  paymentAction,
+  companyPaymentAction,
+  openingDebtAction,
+  laborExpenseAction,
+  expenseAction,
+  ingredientAction,
+  createIngredientAction,
+  updateIngredientAction,
+  adjustIngredientAction,
+  toggleIngredientAction,
+  returnShipmentItemAction,
+  writeOffProductAction,
+  customerAction,
+  companyAction,
+  productAction,
+  recipeAction,
+  updateProductAction,
+  toggleProductAction,
+  updateCustomerAction,
+  toggleCustomerAction,
+  createSupplierAction,
+  updateSupplierAction,
+  toggleSupplierAction,
+  addSupplierDebtAction,
+  paySupplierAction,
+  createUserAction,
+  updateUserAction,
+  toggleUserAction,
+  resetUserPasswordAction,
+  changeOwnPasswordAction,
+} from "./actions";
+import {
+  LayoutDashboard,
+  Package,
+  Factory,
+  Truck,
+  Users,
+  WalletCards,
+  Wheat,
+  ClipboardList,
+  Plus,
+  ArrowUpRight,
+  AlertTriangle,
+  Gift,
+  Building2,
+  ShieldCheck,
+  Database,
+  Printer,
+  ShoppingCart,
+} from "lucide-react";
+import { calculateCustomerDemand } from "@/lib/customer-demand";
+import { splitCustomerDebt } from "@/lib/customer-debt";
+const money = (v: number) =>
+  new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(v) +
+  " с.";
+const unitMoney = (v: number) =>
+  new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 5,
+  }).format(v) + " с.";
+const dt = (d: Date) =>
+  new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+const nav = [
+  ["dashboard", "Обзор", LayoutDashboard],
+  ["expedition", "Экспедитор", Truck],
+  ["production", "Производство", Factory],
+  ["stock", "Готовая продукция", Package],
+  ["ingredients", "Сырьё", Wheat],
+  ["products", "Продукция", ClipboardList],
+  ["recipes", "Рецептуры", ClipboardList],
+  ["customers", "Клиенты", Users],
+  ["shipments", "Отгрузки", Truck],
+  ["reconciliation", "Сверка", ClipboardList],
+  ["procurement", "Снабженец", ShoppingCart],
+  ["suppliers", "Поставщики", Building2],
+  ["team", "Команда", ShieldCheck],
+  ["finance", "Финансы", WalletCards],
+  ["reports", "Аналитика", ArrowUpRight],
+] as const;
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label>
+      {label}
+      {children}
+    </label>
+  );
+}
+function FormBox({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children: React.ReactNode;
+  action: (f: FormData) => void;
+}) {
+  return (
+    <form action={action} className="card formBox">
+      <h3>{title}</h3>
+      <div className="formGrid">{children}</div>
+      <button>
+        <Plus size={17} />
+        Сохранить
+      </button>
+    </form>
+  );
+}
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    tab?: string;
+    ok?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+    cutoff?: string;
+    customerId?: string;
+  }>;
+}) {
+  const user = await getUser();
+  if (!user) redirect("/login");
+  const q = await searchParams,
+    tab = q.tab || "dashboard";
+  if (user.role === "INVESTOR")
+    return (
+      <InvestorDashboard
+        user={{ name: user.name }}
+        tab={tab}
+        from={q.from}
+        to={q.to}
+      />
+    );
+  const now = new Date(),
+    day = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    week = new Date(now);
+  week.setDate(now.getDate() - 6);
+  const month = new Date(now.getFullYear(), now.getMonth(), 1);
+  const demandFrom = new Date(day);
+  demandFrom.setDate(day.getDate() - 7);
+  const defaultCutoff = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`,
+    cutoffValue = /^\d{4}-\d{2}-\d{2}$/.test(q.cutoff || "")
+      ? q.cutoff!
+      : defaultCutoff,
+    [cutoffYear, cutoffMonth, cutoffDay] = cutoffValue.split("-").map(Number),
+    cutoffDate = new Date(cutoffYear, cutoffMonth - 1, cutoffDay),
+    cutoffLabel = new Intl.DateTimeFormat("ru-RU").format(cutoffDate);
+  const [
+    products,
+    ingredients,
+    customers,
+    companies,
+    shipments,
+    batches,
+    payments,
+    expenses,
+    movements,
+    suppliers,
+    purchases,
+    users,
+    productMovements,
+    demandShipments,
+  ] = await Promise.all([
+    db.product.findMany({
+      include: { stock: true, recipes: { include: { ingredient: true } } },
+      orderBy: { name: "asc" },
+    }),
+    db.ingredient.findMany({ orderBy: { name: "asc" } }),
+    db.customer.findMany({
+      include: { company: true, shipments: true, payments: true, debts: true },
+      orderBy: { name: "asc" },
+    }),
+    db.customerCompany.findMany({
+      include: {
+        shops: {
+          include: { shipments: true, debts: true },
+          orderBy: { name: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    db.shipment.findMany({
+      include: { customer: true, items: { include: { product: true } } },
+      orderBy: { deliveredAt: "desc" },
+      take: 30,
+    }),
+    db.productionBatch.findMany({
+      include: { product: true, user: true },
+      orderBy: { producedAt: "desc" },
+      take: 20,
+    }),
+    db.payment.findMany({ orderBy: { paidAt: "desc" }, take: 30 }),
+    db.expense.findMany({
+      include: { user: true },
+      orderBy: { spentAt: "desc" },
+      take: 50,
+    }),
+    db.ingredientMovement.findMany({
+      include: { ingredient: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    db.supplier.findMany({
+      include: { debts: { orderBy: { debtDate: "desc" } }, payments: true },
+      orderBy: { name: "asc" },
+    }),
+    db.purchase.findMany({
+      include: {
+        supplier: true,
+        user: true,
+        items: { include: { ingredient: true } },
+      },
+      orderBy: { purchasedAt: "desc" },
+      take: 40,
+    }),
+    db.user.findMany({ orderBy: { name: "asc" } }),
+    db.productMovement.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
+    db.shipment.findMany({
+      where: { deliveredAt: { gte: demandFrom } },
+      include: { customer: true, items: { include: { product: true } } },
+      orderBy: { deliveredAt: "desc" },
+    }),
+  ]);
+  const todayValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+    reconFrom = /^\d{4}-\d{2}-\d{2}$/.test(q.from || "")
+      ? q.from!
+      : defaultCutoff,
+    reconTo = /^\d{4}-\d{2}-\d{2}$/.test(q.to || "") ? q.to! : todayValue,
+    reconCustomerId =
+      Number(q.customerId) ||
+      customers.find((c) => c.active)?.id ||
+      customers[0]?.id ||
+      0,
+    parseDay = (value: string) => {
+      const [y, m, d] = value.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    },
+    reconStart = parseDay(reconFrom),
+    reconEnd = parseDay(reconTo);
+  reconEnd.setDate(reconEnd.getDate() + 1);
+  const reconciliationShipments =
+    tab === "reconciliation" && reconCustomerId
+      ? await db.shipment.findMany({
+          where: {
+            customerId: reconCustomerId,
+            status: "DELIVERED",
+            deliveredAt: { gte: reconStart, lt: reconEnd },
+          },
+          include: { items: { include: { product: true } } },
+          orderBy: { deliveredAt: "asc" },
+        })
+      : [];
+  const todayShip = shipments.filter((x) => x.deliveredAt >= day),
+    revenue = todayShip.reduce((a, x) => a + x.total, 0),
+    received = payments
+      .filter((x) => x.paidAt >= day)
+      .reduce((a, x) => a + x.amount, 0),
+    todayExpense = expenses
+      .filter((x) => x.spentAt >= day)
+      .reduce((a, x) => a + x.amount, 0),
+    debt = customers.reduce(
+      (a, c) =>
+        a +
+        c.shipments.reduce(
+          (s, x) => s + Math.max(0, x.total - x.paidAmount),
+          0,
+        ) +
+        c.debts.reduce((s, x) => s + Math.max(0, x.amount - x.paidAmount), 0),
+      0,
+    ),
+    low = ingredients.filter((x) => x.stock <= x.minStock);
+  const report = (from: Date) => {
+    const ss = shipments.filter((x) => x.deliveredAt >= from),
+      pp = payments.filter((x) => x.paidAt >= from),
+      ee = expenses.filter((x) => x.spentAt >= from),
+      bb = batches.filter((x) => x.producedAt >= from),
+      returns = productMovements.filter(
+        (x) => x.type === "RETURN" && x.createdAt >= from,
+      ),
+      writeOffs = productMovements.filter(
+        (x) => x.type === "WRITE_OFF" && x.createdAt >= from,
+      ),
+      sales = ss.reduce((a, x) => a + x.total, 0),
+      cogs = ss.reduce(
+        (sum, s) =>
+          sum +
+          s.items.reduce((z, i) => {
+            const returned = productMovements
+              .filter(
+                (m) =>
+                  m.type === "RETURN" &&
+                  m.shipmentId === s.id &&
+                  m.productId === i.productId,
+              )
+              .reduce((a, m) => a + m.quantity, 0);
+            return (
+              z +
+              Math.max(0, i.quantity - returned) *
+                (i.costPrice || i.product.costPrice)
+            );
+          }, 0),
+        0,
+      ),
+      expense = ee.reduce((a, x) => a + x.amount, 0),
+      returnCost = returns.reduce((sum, m) => {
+        const line = shipments
+          .find((s) => s.id === m.shipmentId)
+          ?.items.find((i) => i.productId === m.productId);
+        return (
+          sum +
+          m.quantity *
+            (line?.costPrice ||
+              products.find((p) => p.id === m.productId)?.costPrice ||
+              0)
+        );
+      }, 0),
+      writeOffCost = writeOffs.reduce(
+        (sum, m) =>
+          sum +
+          Math.abs(m.quantity) *
+            (products.find((p) => p.id === m.productId)?.costPrice || 0),
+        0,
+      );
+    return {
+      sales,
+      cogs,
+      gross: sales - cogs,
+      paid: pp.reduce((a, x) => a + x.amount, 0),
+      expense,
+      net: sales - cogs - expense - writeOffCost,
+      made: bb.reduce((a, x) => a + x.quantity, 0),
+      returned: returns.reduce((a, x) => a + x.quantity, 0),
+      returnCost,
+      writtenOff: writeOffs.reduce((a, x) => a + Math.abs(x.quantity), 0),
+      writeOffCost,
+    };
+  };
+  const periods = [
+    ["Сегодня", report(day)],
+    ["7 дней", report(week)],
+    ["Месяц", report(month)],
+  ] as const;
+  const dailySales = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(day);
+    date.setDate(day.getDate() - 6 + index);
+    const next = new Date(date);
+    next.setDate(date.getDate() + 1);
+    return {
+      label: new Intl.DateTimeFormat("ru-RU", { weekday: "short" })
+        .format(date)
+        .replace(".", ""),
+      value: shipments
+        .filter((s) => s.deliveredAt >= date && s.deliveredAt < next)
+        .reduce((sum, s) => sum + s.total, 0),
+    };
+  });
+  const productSales = products
+    .map((product) => ({
+      label: product.name,
+      value: shipments
+        .flatMap((s) => s.items)
+        .filter((i) => i.productId === product.id)
+        .reduce((sum, i) => sum + i.quantity * i.price, 0),
+    }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const expenseCategories = Object.entries(
+    expenses
+      .filter((e) => e.spentAt >= month)
+      .reduce<
+        Record<string, number>
+      >((all, e) => ({ ...all, [e.category]: (all[e.category] || 0) + e.amount }), {}),
+  )
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const customerDebts = customers
+    .map((c) => ({
+      label: c.name,
+      value:
+        c.shipments.reduce(
+          (sum, s) => sum + Math.max(0, s.total - s.paidAmount),
+          0,
+        ) +
+        c.debts.reduce(
+          (sum, d) => sum + Math.max(0, d.amount - d.paidAmount),
+          0,
+        ),
+    }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const customerDemand = calculateCustomerDemand(
+    demandShipments.map((s) => ({
+      customerId: s.customerId,
+      customerName: s.customer.name,
+      deliveredAt: s.deliveredAt,
+      items: s.items.map((i) => ({
+        productId: i.productId,
+        productName: i.product.name,
+        quantity: i.quantity,
+      })),
+    })),
+    now,
+  );
+  return (
+    <div className="shell">
+      <AppNavigation tab={tab} user={{ name: user.name, role: user.role }} />
+      <main>
+        <header>
+          <div className="pageHeading">
+            <div className="dateTile">
+              <b>
+                {new Intl.DateTimeFormat("ru-RU", { day: "2-digit" }).format(
+                  now,
+                )}
+              </b>
+              <span>
+                {new Intl.DateTimeFormat("ru-RU", { month: "short" })
+                  .format(now)
+                  .replace(".", "")}
+              </span>
+            </div>
+            <div>
+              <p className="eyebrow">
+                {new Intl.DateTimeFormat("ru-RU", {
+                  weekday: "long",
+                  year: "numeric",
+                })
+                  .format(now)
+                  .toUpperCase()}
+              </p>
+              <h1>{nav.find((x) => x[0] === tab)?.[1] || "Обзор"}</h1>
+            </div>
+          </div>
+          <Link className="quick" href="/?tab=expedition">
+            <Truck size={18} />
+            Быстрая отгрузка
+          </Link>
+        </header>
+        {q.ok && <div className="success">✓ {q.ok}</div>}
+        {tab === "dashboard" && (
+          <>
+            <section className="hero">
+              <div>
+                <span>Сегодня в пекарне</span>
+                <strong>{money(revenue)}</strong>
+                <small>отгружено · получено {money(received)}</small>
+              </div>
+              <div className="heroBread">☼</div>
+            </section>
+            <section className="stats">
+              <div className="stat">
+                <small>Произведено</small>
+                <b>
+                  {batches
+                    .filter((x) => x.producedAt >= day)
+                    .reduce((a, x) => a + x.quantity, 0)}{" "}
+                  шт.
+                </b>
+                <span>за сегодня</span>
+              </div>
+              <div className="stat">
+                <small>На складе</small>
+                <b>
+                  {products.reduce((a, x) => a + (x.stock?.quantity || 0), 0)}{" "}
+                  шт.
+                </b>
+                <span>{products.length} вида продукции</span>
+              </div>
+              <div className="stat">
+                <small>Общий долг</small>
+                <b>{money(debt)}</b>
+                <span>по всем клиентам</span>
+              </div>
+              <div className="stat">
+                <small>Расходы сегодня</small>
+                <b>{money(todayExpense)}</b>
+                <span>чистый поток {money(received - todayExpense)}</span>
+              </div>
+            </section>
+            <div className="two">
+              <section className="card">
+                <div className="cardHead">
+                  <h3>Последние отгрузки</h3>
+                  <Link href="/?tab=shipments">Все</Link>
+                </div>
+                <div className="list">
+                  {shipments.slice(0, 5).map((s) => (
+                    <div className="row" key={s.id}>
+                      <div className="dot">№</div>
+                      <div>
+                        <b>{s.customer.name}</b>
+                        <small>
+                          {dt(s.deliveredAt)} ·{" "}
+                          {s.items.reduce((a, i) => a + i.quantity, 0)} шт.
+                        </small>
+                      </div>
+                      <strong>{money(s.total)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="card">
+                <div className="cardHead">
+                  <h3>Внимание</h3>
+                  <span className="badge">{low.length}</span>
+                </div>
+                {low.length ? (
+                  <div className="list">
+                    {low.map((i) => (
+                      <div className="row" key={i.id}>
+                        <div className="warn">
+                          <AlertTriangle size={18} />
+                        </div>
+                        <div>
+                          <b>{i.name}</b>
+                          <small>
+                            {i.stock < 0
+                              ? "Требуется пополнение"
+                              : "Минимум: " + i.minStock + " " + i.unit}
+                          </small>
+                        </div>
+                        <strong className={i.stock < 0 ? "red" : ""}>
+                          {i.stock.toFixed(1)}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty">Остатков сырья достаточно</p>
+                )}
+              </section>
+            </div>
+          </>
+        )}
+        {(tab === "expedition" || tab === "shipments") && (
+          <>
+            <ShipmentComposer
+              compact={tab === "expedition"}
+              customers={customers
+                .filter((c) => c.active)
+                .map((c) => ({ id: c.id, name: c.name }))}
+              products={products
+                .filter((p) => p.active)
+                .map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  price: p.price,
+                  stock: p.stock?.quantity || 0,
+                }))}
+            />
+            <section className="card tableCard">
+              <h3>История отгрузок и возвраты</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Клиент</th>
+                    <th>Состав</th>
+                    <th>Сумма</th>
+                    <th>Долг</th>
+                    <th>Возврат</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shipments.map((s) => (
+                    <tr key={s.id}>
+                      <td>{dt(s.deliveredAt)}</td>
+                      <td>
+                        <b>{s.customer.name}</b>
+                      </td>
+                      <td>
+                        {s.items.map((i) => (
+                          <div className="shipmentItem" key={i.id}>
+                            {i.product.name} × {i.quantity}
+                          </div>
+                        ))}
+                      </td>
+                      <td>{money(s.total)}</td>
+                      <td className={s.total > s.paidAmount ? "red" : ""}>
+                        {money(Math.max(0, s.total - s.paidAmount))}
+                      </td>
+                      <td>
+                        <Link
+                          className="printLink"
+                          href={"/shipments/" + s.id + "/print"}
+                          target="_blank"
+                        >
+                          <Printer size={14} />
+                          Печать
+                        </Link>
+                        <details>
+                          <summary>Возврат</summary>
+                          {s.items.map((i) => (
+                            <form
+                              action={returnShipmentItemAction}
+                              className="returnForm"
+                              key={i.id}
+                            >
+                              <input
+                                type="hidden"
+                                name="shipmentId"
+                                value={s.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="productId"
+                                value={i.productId}
+                              />
+                              <small>{i.product.name}</small>
+                              <input
+                                name="quantity"
+                                type="number"
+                                min="1"
+                                max={i.quantity}
+                                defaultValue="1"
+                                aria-label="Количество возврата"
+                              />
+                              <input
+                                name="note"
+                                placeholder="Причина"
+                                aria-label="Причина возврата"
+                              />
+                              <button>Вернуть</button>
+                            </form>
+                          ))}
+                        </details>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </>
+        )}
+        {tab === "reconciliation" && (
+          <>
+            <section className="card reconciliationFilter">
+              <div>
+                <p className="eyebrow">СВЕРКА С МАГАЗИНОМ</p>
+                <h3>Выберите магазин и период</h3>
+              </div>
+              <form method="get" className="periodFilter">
+                <input type="hidden" name="tab" value="reconciliation" />
+                <Field label="Магазин">
+                  <select name="customerId" defaultValue={reconCustomerId}>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="С какого числа">
+                  <input
+                    name="from"
+                    type="date"
+                    defaultValue={reconFrom}
+                    max={reconTo}
+                  />
+                </Field>
+                <Field label="До какого числа">
+                  <input
+                    name="to"
+                    type="date"
+                    defaultValue={reconTo}
+                    min={reconFrom}
+                  />
+                </Field>
+                <button>Показать</button>
+              </form>
+            </section>
+            <section className="stats reconciliationTotals">
+              <div className="stat">
+                <small>Накладных</small>
+                <b>{reconciliationShipments.length}</b>
+              </div>
+              <div className="stat">
+                <small>Общая сумма</small>
+                <b>
+                  {money(
+                    reconciliationShipments.reduce(
+                      (sum, s) => sum + s.total,
+                      0,
+                    ),
+                  )}
+                </b>
+              </div>
+              <div className="stat">
+                <small>Оплачено по накладным</small>
+                <b>
+                  {money(
+                    reconciliationShipments.reduce(
+                      (sum, s) => sum + s.paidAmount,
+                      0,
+                    ),
+                  )}
+                </b>
+              </div>
+              <div className="stat">
+                <small>Остаток</small>
+                <b
+                  className={
+                    reconciliationShipments.some((s) => s.total > s.paidAmount)
+                      ? "red"
+                      : ""
+                  }
+                >
+                  {money(
+                    reconciliationShipments.reduce(
+                      (sum, s) => sum + Math.max(0, s.total - s.paidAmount),
+                      0,
+                    ),
+                  )}
+                </b>
+              </div>
+            </section>
+            <section className="card tableCard">
+              <h3>Список накладных</h3>
+              {reconciliationShipments.length ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>№ накладной</th>
+                      <th>Товары</th>
+                      <th>Сумма</th>
+                      <th>Оплачено</th>
+                      <th>Остаток</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reconciliationShipments.map((s) => (
+                      <tr key={s.id}>
+                        <td>{dt(s.deliveredAt)}</td>
+                        <td>
+                          <b>№ {s.id}</b>
+                        </td>
+                        <td>
+                          {s.items.map((i) => (
+                            <div className="shipmentItem" key={i.id}>
+                              {i.product.name} × {i.quantity}
+                            </div>
+                          ))}
+                        </td>
+                        <td>{money(s.total)}</td>
+                        <td>{money(s.paidAmount)}</td>
+                        <td className={s.total > s.paidAmount ? "red" : ""}>
+                          {money(Math.max(0, s.total - s.paidAmount))}
+                        </td>
+                        <td>
+                          <Link
+                            className="printLink"
+                            href={"/shipments/" + s.id + "/print"}
+                            target="_blank"
+                          >
+                            <Printer size={14} />
+                            Открыть
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="empty">За выбранный период накладных нет</p>
+              )}
+            </section>
+          </>
+        )}
+        {tab === "production" && (
+          <>
+            <FormBox title="Выпустить партию" action={produceAction}>
+              <Field label="Продукция">
+                <select name="productId">
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Выпечено всего, шт.">
+                <input
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  defaultValue="20"
+                  required
+                />
+              </Field>
+              <Field label="Брак, шт.">
+                <input
+                  name="defectiveQuantity"
+                  type="number"
+                  min="0"
+                  defaultValue="0"
+                  required
+                />
+              </Field>
+              <Field label="Примечание">
+                <input name="note" placeholder="Например, утренняя смена" />
+              </Field>
+            </FormBox>
+            <section className="card tableCard">
+              <h3>Последние партии</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Продукция</th>
+                    <th>Выпечено всего</th>
+                    <th>Сотрудник</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((b) => (
+                    <tr key={b.id}>
+                      <td>{dt(b.producedAt)}</td>
+                      <td>
+                        <b>{b.product.name}</b>
+                      </td>
+                      <td>{b.quantity} шт.</td>
+                      <td>{b.user.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </>
+        )}
+        {tab === "stock" && (
+          <>
+            <FormBox
+              title="Списать готовую продукцию"
+              action={writeOffProductAction}
+            >
+              <Field label="Продукция">
+                <select name="productId">
+                  {products
+                    .filter((p) => p.active)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · остаток {p.stock?.quantity || 0}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Количество">
+                <input name="quantity" type="number" min="1" required />
+              </Field>
+              <Field label="Причина">
+                <input
+                  name="note"
+                  required
+                  placeholder="Порча, брак, дегустация..."
+                />
+              </Field>
+            </FormBox>
+            <section className="productGrid">
+              {products.map((p) => (
+                <article className="productCard" key={p.id}>
+                  <div className="breadIcon">◉</div>
+                  <small>{p.sku}</small>
+                  <h3>{p.name}</h3>
+                  <strong>
+                    {p.stock?.quantity || 0}
+                    <span> шт.</span>
+                  </strong>
+                  <p>
+                    {money(p.price)} за штуку · себестоимость{" "}
+                    {money(p.costPrice)}
+                  </p>
+                </article>
+              ))}
+            </section>
+          </>
+        )}
+        {tab === "ingredients" && (
+          <>
+            <div className="two">
+              <FormBox title="Новое сырьё" action={createIngredientAction}>
+                <Field label="Название">
+                  <input name="name" required placeholder="Например, соль" />
+                </Field>
+                <Field label="Единица">
+                  <select name="unit">
+                    <option value="KG">кг</option>
+                    <option value="G">г</option>
+                    <option value="L">л</option>
+                    <option value="ML">мл</option>
+                    <option value="PCS">шт.</option>
+                  </select>
+                </Field>
+                <Field label="Начальный остаток">
+                  <input
+                    name="stock"
+                    type="number"
+                    step=".001"
+                    min="0"
+                    defaultValue="0"
+                    required
+                  />
+                </Field>
+                <Field label="Минимальный остаток">
+                  <input
+                    name="minStock"
+                    type="number"
+                    step=".001"
+                    min="0"
+                    defaultValue="0"
+                    required
+                  />
+                </Field>
+                <Field label="Целевой запас">
+                  <input
+                    name="targetStock"
+                    type="number"
+                    step=".001"
+                    min="0"
+                    defaultValue="0"
+                    required
+                  />
+                </Field>
+                <Field label="Цена закупки за единицу">
+                  <input
+                    name="purchasePrice"
+                    type="number"
+                    step=".00001"
+                    min="0"
+                    defaultValue="0"
+                    required
+                  />
+                </Field>
+              </FormBox>
+              <FormBox title="Приход сырья" action={ingredientAction}>
+                <Field label="Сырьё">
+                  <select name="ingredientId">
+                    {ingredients
+                      .filter((i) => i.active)
+                      .map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Количество">
+                  <input
+                    name="quantity"
+                    type="number"
+                    step="0.001"
+                    min=".001"
+                    required
+                  />
+                </Field>
+                <Field label="Примечание">
+                  <input name="note" placeholder="Поставщик или накладная" />
+                </Field>
+              </FormBox>
+            </div>
+            <section className="ingredientGrid">
+              {ingredients.map((i) => (
+                <article
+                  className={
+                    "card ingredientCard " +
+                    (!i.active ? "archived " : "") +
+                    (i.stock < 0 ? "negativeStock" : "")
+                  }
+                  key={i.id}
+                >
+                  <div className="cardHead">
+                    <div>
+                      <small>{i.active ? "АКТИВНО" : "В АРХИВЕ"}</small>
+                      <h3>{i.name}</h3>
+                    </div>
+                    <span
+                      className={
+                        i.stock <= i.minStock ? "status bad" : "status"
+                      }
+                    >
+                      {i.stock < 0
+                        ? "Требуется пополнение"
+                        : i.stock <= i.minStock
+                          ? "Заканчивается"
+                          : "Достаточно"}
+                    </span>
+                  </div>
+                  <p className={"bigStock " + (i.stock < 0 ? "red" : "")}>
+                    {i.stock.toFixed(3)} <span>{i.unit}</span>
+                  </p>
+                  {i.stock < 0 && (
+                    <p className="stockWarning">
+                      <AlertTriangle size={15} />
+                      Остаток отрицательный — требуется пополнение
+                    </p>
+                  )}
+                  <p className="mutedLine">
+                    Минимум {i.minStock} · закупка {unitMoney(i.purchasePrice)}
+                  </p>
+                  <details>
+                    <summary>Редактировать карточку</summary>
+                    <form action={updateIngredientAction} className="miniForm">
+                      <input type="hidden" name="id" value={i.id} />
+                      <Field label="Название">
+                        <input name="name" defaultValue={i.name} required />
+                      </Field>
+                      <Field label="Единица">
+                        <select name="unit" defaultValue={i.unit}>
+                          <option value="KG">кг</option>
+                          <option value="G">г</option>
+                          <option value="L">л</option>
+                          <option value="ML">мл</option>
+                          <option value="PCS">шт.</option>
+                        </select>
+                      </Field>
+                      <Field label="Минимум">
+                        <input
+                          name="minStock"
+                          type="number"
+                          step=".001"
+                          min="0"
+                          defaultValue={i.minStock}
+                        />
+                      </Field>
+                      <Field label="Целевой запас">
+                        <input
+                          name="targetStock"
+                          type="number"
+                          step=".001"
+                          min="0"
+                          defaultValue={i.targetStock}
+                        />
+                      </Field>
+                      <Field label="Цена">
+                        <input
+                          name="purchasePrice"
+                          type="number"
+                          step=".00001"
+                          min="0"
+                          defaultValue={i.purchasePrice}
+                        />
+                      </Field>
+                      <button>Сохранить</button>
+                    </form>
+                  </details>
+                  <details>
+                    <summary>Инвентаризация / корректировка</summary>
+                    <form action={adjustIngredientAction} className="miniForm">
+                      <input type="hidden" name="id" value={i.id} />
+                      <Field label="Фактически на складе">
+                        <input
+                          name="actual"
+                          type="number"
+                          step=".001"
+                          min="0"
+                          defaultValue={i.stock}
+                          required
+                        />
+                      </Field>
+                      <Field label="Причина">
+                        <input
+                          name="note"
+                          required
+                          placeholder="Пересчёт, порча..."
+                        />
+                      </Field>
+                      <button>Записать остаток</button>
+                    </form>
+                  </details>
+                  <form action={toggleIngredientAction}>
+                    <input type="hidden" name="id" value={i.id} />
+                    <button className="ghostButton">
+                      {i.active ? "Перенести в архив" : "Восстановить"}
+                    </button>
+                  </form>
+                </article>
+              ))}
+            </section>
+            <section className="card tableCard">
+              <h3>История движения сырья</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Сырьё</th>
+                    <th>Операция</th>
+                    <th>Изменение</th>
+                    <th>Примечание</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((m) => (
+                    <tr key={m.id}>
+                      <td>{dt(m.createdAt)}</td>
+                      <td>
+                        <b>{m.ingredient.name}</b>
+                      </td>
+                      <td>
+                        {m.type === "PURCHASE"
+                          ? "Приход"
+                          : m.type === "PRODUCTION_USE"
+                            ? "Списание в производство"
+                            : "Корректировка"}
+                      </td>
+                      <td className={m.quantity < 0 ? "red" : ""}>
+                        {m.quantity > 0 ? "+" : ""}
+                        {m.quantity.toFixed(3)} {m.ingredient.unit}
+                      </td>
+                      <td>{m.note || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </>
+        )}
+        {tab === "products" && (
+          <>
+            <FormBox title="Добавить продукцию" action={productAction}>
+              <Field label="Название">
+                <input name="name" required />
+              </Field>
+              <Field label="Артикул">
+                <input name="sku" required />
+              </Field>
+              <Field label="Цена продажи">
+                <input name="price" type="number" step=".01" required />
+              </Field>
+              <Field label="Начальная себестоимость">
+                <input name="costPrice" type="number" step=".01" required />
+              </Field>
+            </FormBox>
+            <section className="managementGrid">
+              {products.map((p) => (
+                <article
+                  className={"card manageCard " + (!p.active ? "archived" : "")}
+                  key={p.id}
+                >
+                  <div className="cardHead">
+                    <div>
+                      <small>
+                        {p.active ? "АКТИВНО" : "В АРХИВЕ"} · {p.sku}
+                      </small>
+                      <h3>{p.name}</h3>
+                    </div>
+                    <strong>{money(p.price)}</strong>
+                  </div>
+                  <p>
+                    Себестоимость: <b>{money(p.costPrice)}</b> · маржа{" "}
+                    {p.price
+                      ? Math.round(((p.price - p.costPrice) / p.price) * 100)
+                      : 0}
+                    %
+                  </p>
+                  <details>
+                    <summary>Редактировать</summary>
+                    <form action={updateProductAction} className="miniForm">
+                      <input type="hidden" name="id" value={p.id} />
+                      <Field label="Название">
+                        <input name="name" defaultValue={p.name} required />
+                      </Field>
+                      <Field label="Артикул">
+                        <input name="sku" defaultValue={p.sku} required />
+                      </Field>
+                      <Field label="Цена продажи">
+                        <input
+                          name="price"
+                          type="number"
+                          step=".01"
+                          min="0"
+                          defaultValue={p.price}
+                          required
+                        />
+                      </Field>
+                      <button>Сохранить</button>
+                    </form>
+                  </details>
+                  <form action={toggleProductAction}>
+                    <input type="hidden" name="id" value={p.id} />
+                    <button className="ghostButton">
+                      {p.active ? "Архивировать" : "Восстановить"}
+                    </button>
+                  </form>
+                </article>
+              ))}
+            </section>
+          </>
+        )}
+        {tab === "recipes" && (
+          <>
+            <FormBox
+              title="Добавить или изменить ингредиент рецепта"
+              action={recipeAction}
+            >
+              <Field label="Продукция">
+                <select name="productId">
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Ингредиент">
+                <select name="ingredientId">
+                  {ingredients.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({i.unit})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="На 1 штуку">
+                <input
+                  name="quantity"
+                  type="number"
+                  step=".001"
+                  min=".001"
+                  required
+                />
+              </Field>
+            </FormBox>
+            <section className="productGrid">
+              {products.map((p) => (
+                <article className="productCard" key={p.id}>
+                  <h3>{p.name}</h3>
+                  {p.recipes.length ? (
+                    p.recipes.map((r) => (
+                      <div className="recipeLine" key={r.id}>
+                        <p>
+                          {r.ingredient.name}:{" "}
+                          <b>
+                            {r.quantity} {r.ingredient.unit}
+                          </b>
+                        </p>
+                        <DeleteRecipeItem id={r.id} name={r.ingredient.name} />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="emptyRecipe">Рецепт пока не заполнен</p>
+                  )}
+                </article>
+              ))}
+            </section>
+          </>
+        )}
+        {tab === "customers" && (
+          <>
+            <div className="two companyForms">
+              <FormBox title="Новая компания" action={companyAction}>
+                <Field label="Название компании"><input name="name" required /></Field>
+                <Field label="Телефон"><input name="phone" /></Field>
+              </FormBox>
+              <FormBox title="Новый магазин / точка" action={customerAction}>
+                <Field label="Компания">
+                  <select name="companyId"><option value="">Без компании</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select>
+                </Field>
+                <Field label="Название магазина"><input name="name" required /></Field>
+                <Field label="Телефон"><input name="phone" /></Field>
+                <Field label="Адрес"><input name="address" /></Field>
+                <Field label="Лимит долга"><input name="creditLimit" type="number" defaultValue="500" /></Field>
+              </FormBox>
+            </div>
+            {companies.map((company) => {
+              const total = company.shops.reduce((sum, shop) => sum + shop.shipments.reduce((a, x) => a + Math.max(0, x.total - x.paidAmount), 0) + shop.debts.reduce((a, x) => a + Math.max(0, x.amount - x.paidAmount), 0), 0);
+              return <section className="card companyCard" key={company.id}><div className="cardHead"><div><small>КОМПАНИЯ</small><h3>{company.name}</h3></div><strong className={total > 0 ? "red" : ""}>Общий долг: {money(total)}</strong></div><div className="companyShops">{company.shops.map((shop) => <span key={shop.id}><b>{shop.name}</b><small>{money(shop.shipments.reduce((a, x) => a + Math.max(0, x.total - x.paidAmount), 0) + shop.debts.reduce((a, x) => a + Math.max(0, x.amount - x.paidAmount), 0))}</small></span>)}</div></section>;
+            })}
+            <section className="card debtCutoff">
+              <div>
+                <p className="eyebrow">РАЗДЕЛЕНИЕ ЗАДОЛЖЕННОСТИ</p>
+                <h3>Долг до даты и после неё</h3>
+                <p>
+                  Учитываются остатки реальных отгрузок и старых долгов после
+                  распределённых оплат.
+                </p>
+              </div>
+              <form method="get" className="periodFilter">
+                <input type="hidden" name="tab" value="customers" />
+                <Field label="Дата отсечения">
+                  <input name="cutoff" type="date" defaultValue={cutoffValue} />
+                </Field>
+                <button>Показать</button>
+              </form>
+            </section>
+            <div className="two">
+              {user.role === "OWNER" && (
+                <FormBox title="Внести старый долг" action={openingDebtAction}>
+                  <Field label="Клиент">
+                    <select name="customerId">
+                      {customers
+                        .filter((c) => c.active)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </Field>
+                  <Field label="Сумма долга">
+                    <input
+                      name="amount"
+                      type="number"
+                      min=".01"
+                      step=".01"
+                      required
+                    />
+                  </Field>
+                  <Field label="Дата долга">
+                    <input
+                      name="debtDate"
+                      type="date"
+                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Примечание">
+                    <input name="note" defaultValue="Долг до начала учёта" />
+                  </Field>
+                </FormBox>
+              )}
+            </div>
+            <section className="managementGrid">
+              {customers.map((c) => {
+                const openingDebt = c.debts.reduce(
+                    (a, x) => a + Math.max(0, x.amount - x.paidAmount),
+                    0,
+                  ),
+                  split = splitCustomerDebt(
+                    [
+                      ...c.shipments
+                        .filter((x) => x.status === "DELIVERED")
+                        .map((x) => ({
+                          amount: x.total,
+                          paidAmount: x.paidAmount,
+                          date: x.deliveredAt,
+                        })),
+                      ...c.debts.map((x) => ({
+                        amount: x.amount,
+                        paidAmount: x.paidAmount,
+                        date: x.debtDate,
+                      })),
+                    ],
+                    cutoffDate,
+                  );
+                return (
+                  <article
+                    className={
+                      "card manageCard " + (!c.active ? "archived" : "")
+                    }
+                    key={c.id}
+                  >
+                    <div className="cardHead">
+                      <div>
+                        <small>{c.active ? "АКТИВЕН" : "В АРХИВЕ"}</small>
+                        <h3>{c.name}</h3>
+                      </div>
+                      <span className="bonus">
+                        <Gift size={14} />
+                        {c.bonusPoints}
+                      </span>
+                    </div>
+                    <p>
+                      {c.phone || "Телефон не указан"} ·{" "}
+                      {c.address || "Адрес не указан"}
+                    </p>
+                    <div className="manageStats debtStats">
+                      <span>
+                        Долг до {cutoffLabel}{" "}
+                        <b className={split.before > 0 ? "red" : ""}>
+                          {money(split.before)}
+                        </b>
+                      </span>
+                      <span>
+                        Долг после {cutoffLabel}{" "}
+                        <b className={split.after > 0 ? "red" : ""}>
+                          {money(split.after)}
+                        </b>
+                        <small>включая выбранную дату</small>
+                      </span>
+                      <span className="debtTotal">
+                        Общий долг{" "}
+                        <b className={split.total > 0 ? "red" : ""}>
+                          {money(split.total)}
+                        </b>
+                        {openingDebt > 0 && (
+                          <small>
+                            из них внесённый старый долг: {money(openingDebt)}
+                          </small>
+                        )}
+                      </span>
+                    </div>
+                    <details>
+                      <summary>Редактировать</summary>
+                      <form action={updateCustomerAction} className="miniForm">
+                        <input type="hidden" name="id" value={c.id} />
+                        <Field label="Компания">
+                          <select name="companyId" defaultValue={c.companyId || ""}><option value="">Без компании</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select>
+                        </Field>
+                        <Field label="Название">
+                          <input name="name" defaultValue={c.name} required />
+                        </Field>
+                        <Field label="Телефон">
+                          <input name="phone" defaultValue={c.phone || ""} />
+                        </Field>
+                        <Field label="Адрес">
+                          <input
+                            name="address"
+                            defaultValue={c.address || ""}
+                          />
+                        </Field>
+                        <Field label="Лимит долга">
+                          <input
+                            name="creditLimit"
+                            type="number"
+                            min="0"
+                            defaultValue={c.creditLimit}
+                          />
+                        </Field>
+                        <button>Сохранить</button>
+                      </form>
+                    </details>
+                    {user.role === "OWNER" && (
+                      <form action={toggleCustomerAction}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <button className="ghostButton">
+                          {c.active ? "Архивировать" : "Восстановить"}
+                        </button>
+                      </form>
+                    )}
+                  </article>
+                );
+              })}
+            </section>
+          </>
+        )}
+        {tab === "procurement" && user.role === "OWNER" && (
+          <SupplyMobile
+            suppliers={suppliers
+              .filter((s) => s.active)
+              .map((s) => ({ id: s.id, name: s.name }))}
+            items={ingredients
+              .filter(
+                (i) =>
+                  i.active &&
+                  i.stock <= Math.max(i.minStock, i.minStock * 1.25),
+              )
+              .map((i) => ({
+                id: i.id,
+                name: i.name,
+                unit: i.unit,
+                stock: i.stock,
+                minStock: i.minStock,
+                targetStock: i.targetStock,
+                price: i.purchasePrice,
+              }))}
+          />
+        )}
+        {tab === "suppliers" && user.role === "OWNER" && (
+          <>
+            <div className="two">
+              <FormBox title="Новый поставщик" action={createSupplierAction}>
+                <Field label="Название">
+                  <input name="name" required />
+                </Field>
+                <Field label="Телефон">
+                  <input name="phone" />
+                </Field>
+                <Field label="Адрес">
+                  <input name="address" />
+                </Field>
+                <Field label="Примечание">
+                  <input name="note" />
+                </Field>
+              </FormBox>
+              <PurchaseComposer
+                suppliers={suppliers
+                  .filter((s) => s.active)
+                  .map((s) => ({ id: s.id, name: s.name }))}
+                ingredients={ingredients
+                  .filter((i) => i.active)
+                  .map((i) => ({
+                    id: i.id,
+                    name: i.name,
+                    unit: i.unit,
+                    price: i.purchasePrice,
+                  }))}
+              />
+            </div>
+            <div className="supplierDebtForms">
+              <FormBox
+                title="Добавить долг поставщику"
+                action={addSupplierDebtAction}
+              >
+                <Field label="Поставщик">
+                  <select name="supplierId">
+                    {suppliers
+                      .filter((s) => s.active)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Сумма долга">
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <Field label="Дата">
+                  <input
+                    name="debtDate"
+                    type="date"
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    required
+                  />
+                </Field>
+                <Field label="За что должны">
+                  <input name="note" placeholder="Товар, накладная..." />
+                </Field>
+              </FormBox>
+              <FormBox title="Оплатить поставщику" action={paySupplierAction}>
+                <Field label="Поставщик">
+                  <select name="supplierId">
+                    {suppliers
+                      .filter(
+                        (s) =>
+                          s.active &&
+                          s.debts.some((d) => d.amount > d.paidAmount),
+                      )
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} · долг{" "}
+                          {money(
+                            s.debts.reduce(
+                              (a, d) =>
+                                a + Math.max(0, d.amount - d.paidAmount),
+                              0,
+                            ),
+                          )}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Сумма оплаты">
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <Field label="Способ">
+                  <select name="method">
+                    <option value="CASH">Наличные</option>
+                    <option value="TRANSFER">Перевод</option>
+                  </select>
+                </Field>
+                <Field label="Примечание">
+                  <input name="note" placeholder="Номер чека или комментарий" />
+                </Field>
+              </FormBox>
+            </div>
+            <section className="managementGrid">
+              {suppliers.map((s) => {
+                const due = s.debts.reduce(
+                  (a, d) => a + Math.max(0, d.amount - d.paidAmount),
+                  0,
+                );
+                return (
+                  <article
+                    className={
+                      "card manageCard " + (!s.active ? "archived" : "")
+                    }
+                    key={s.id}
+                  >
+                    <div className="cardHead">
+                      <div>
+                        <small>{s.active ? "АКТИВЕН" : "В АРХИВЕ"}</small>
+                        <h3>{s.name}</h3>
+                      </div>
+                      <span className={due > 0 ? "supplierDue" : "status"}>
+                        {due > 0 ? "Долг " + money(due) : "Долга нет"}
+                      </span>
+                    </div>
+                    <p>
+                      {s.phone || "Телефон не указан"} ·{" "}
+                      {s.address || "Адрес не указан"}
+                    </p>
+                    <p>{s.note}</p>
+                    <details>
+                      <summary>Редактировать</summary>
+                      <form action={updateSupplierAction} className="miniForm">
+                        <input type="hidden" name="id" value={s.id} />
+                        <Field label="Название">
+                          <input name="name" defaultValue={s.name} required />
+                        </Field>
+                        <Field label="Телефон">
+                          <input name="phone" defaultValue={s.phone || ""} />
+                        </Field>
+                        <Field label="Адрес">
+                          <input
+                            name="address"
+                            defaultValue={s.address || ""}
+                          />
+                        </Field>
+                        <Field label="Примечание">
+                          <input name="note" defaultValue={s.note || ""} />
+                        </Field>
+                        <button>Сохранить</button>
+                      </form>
+                    </details>
+                    <form action={toggleSupplierAction}>
+                      <input type="hidden" name="id" value={s.id} />
+                      <button className="ghostButton">
+                        {s.active ? "Архивировать" : "Восстановить"}
+                      </button>
+                    </form>
+                  </article>
+                );
+              })}
+            </section>
+            <section className="card tableCard">
+              <h3>Долги поставщикам</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Поставщик</th>
+                    <th>Основание</th>
+                    <th>Сумма</th>
+                    <th>Оплачено</th>
+                    <th>Осталось</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppliers.flatMap((s) =>
+                    s.debts.map((d) => (
+                      <tr key={d.id}>
+                        <td>{dt(d.debtDate)}</td>
+                        <td>
+                          <b>{s.name}</b>
+                        </td>
+                        <td>{d.note || "—"}</td>
+                        <td>{money(d.amount)}</td>
+                        <td>{money(d.paidAmount)}</td>
+                        <td className={d.amount > d.paidAmount ? "red" : ""}>
+                          {money(Math.max(0, d.amount - d.paidAmount))}
+                        </td>
+                      </tr>
+                    )),
+                  )}
+                </tbody>
+              </table>
+            </section>
+            <section className="card tableCard">
+              <h3>Последние закупки</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Поставщик</th>
+                    <th>Документ</th>
+                    <th>Состав</th>
+                    <th>Сумма</th>
+                    <th>Принял</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchases.map((p) => (
+                    <tr key={p.id}>
+                      <td>{dt(p.purchasedAt)}</td>
+                      <td>
+                        <b>{p.supplier.name}</b>
+                      </td>
+                      <td>{p.invoiceNumber || "—"}</td>
+                      <td>
+                        {p.items
+                          .map((i) => i.ingredient.name + " × " + i.quantity)
+                          .join(", ")}
+                      </td>
+                      <td>{money(p.total)}</td>
+                      <td>{p.user.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </>
+        )}
+        {tab === "team" && (
+          <>
+            <FormBox
+              title="Изменить мой пароль"
+              action={changeOwnPasswordAction}
+            >
+              <Field label="Текущий пароль">
+                <input name="current" type="password" required />
+              </Field>
+              <Field label="Новый пароль">
+                <input name="password" type="password" minLength={6} required />
+              </Field>
+            </FormBox>
+            {user.role === "OWNER" && (
+              <>
+                <FormBox title="Добавить сотрудника" action={createUserAction}>
+                  <Field label="Имя">
+                    <input name="name" required />
+                  </Field>
+                  <Field label="Логин">
+                    <input name="username" required />
+                  </Field>
+                  <Field label="Временный пароль">
+                    <input
+                      name="password"
+                      type="password"
+                      minLength={6}
+                      required
+                    />
+                  </Field>
+                  <Field label="Роль">
+                    <select name="role">
+                      <option value="WORKER">Сотрудник</option>
+                      <option value="INVESTOR">
+                        Инвестор (только финансы)
+                      </option>
+                      <option value="OWNER">Владелец</option>
+                    </select>
+                  </Field>
+                </FormBox>
+                <section className="managementGrid">
+                  {users.map((u) => (
+                    <article
+                      className={
+                        "card manageCard " + (!u.active ? "archived" : "")
+                      }
+                      key={u.id}
+                    >
+                      <div className="cardHead">
+                        <div className="teamPerson">
+                          <span className="avatar">{u.name[0]}</span>
+                          <div>
+                            <h3>{u.name}</h3>
+                            <small>
+                              @{u.username} ·{" "}
+                              {u.role === "OWNER"
+                                ? "Владелец"
+                                : u.role === "INVESTOR"
+                                  ? "Инвестор"
+                                  : "Сотрудник"}
+                            </small>
+                          </div>
+                        </div>
+                        <span className={u.active ? "status" : "status bad"}>
+                          {u.active ? "Доступ открыт" : "Отключён"}
+                        </span>
+                      </div>
+                      <form action={updateUserAction} className="miniForm">
+                        <input type="hidden" name="id" value={u.id} />
+                        <Field label="Имя">
+                          <input name="name" defaultValue={u.name} />
+                        </Field>
+                        <Field label="Роль">
+                          <select name="role" defaultValue={u.role}>
+                            <option value="WORKER">Сотрудник</option>
+                            <option value="INVESTOR">
+                              Инвестор (только финансы)
+                            </option>
+                            <option value="OWNER">Владелец</option>
+                          </select>
+                        </Field>
+                        <button>Обновить</button>
+                      </form>
+                      <form
+                        action={resetUserPasswordAction}
+                        className="inlineForm"
+                      >
+                        <input type="hidden" name="id" value={u.id} />
+                        <input
+                          name="password"
+                          type="password"
+                          minLength={6}
+                          placeholder="Новый пароль"
+                          required
+                        />
+                        <button>Сменить пароль</button>
+                      </form>
+                      {u.id !== user.id && (
+                        <form action={toggleUserAction}>
+                          <input type="hidden" name="id" value={u.id} />
+                          <button className="ghostButton">
+                            {u.active
+                              ? "Отключить доступ"
+                              : "Восстановить доступ"}
+                          </button>
+                        </form>
+                      )}
+                    </article>
+                  ))}
+                </section>
+                <section className="card backupCard">
+                  <div>
+                    <Database size={26} />
+                    <div>
+                      <h3>Резервная копия базы</h3>
+                      <p>
+                        Скачайте копию всех данных. Храните её на флешке или
+                        другом компьютере.
+                      </p>
+                    </div>
+                  </div>
+                  <Link className="quick" href="/api/backup">
+                    Скачать копию
+                  </Link>
+                </section>
+              </>
+            )}
+          </>
+        )}
+        {tab === "finance" && user.role === "OWNER" && (
+          <>
+            <InvestmentManagement />
+            <div className="financeForms">
+              {companies.length > 0 && <FormBox title="Принять оплату от компании" action={companyPaymentAction}>
+                <Field label="Компания"><select name="companyId">{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
+                <Field label="Сумма"><input name="amount" type="number" min=".01" step=".01" required /></Field>
+                <Field label="Способ"><select name="method"><option value="CASH">Наличные</option><option value="TRANSFER">Перевод</option></select></Field>
+                <Field label="Примечание"><input name="note" placeholder="Общая оплата всех магазинов" /></Field>
+              </FormBox>}
+              <FormBox title="Принять оплату" action={paymentAction}>
+                <Field label="Клиент">
+                  <select name="customerId">
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Сумма">
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <Field label="Способ">
+                  <select name="method">
+                    <option value="CASH">Наличные</option>
+                    <option value="TRANSFER">Перевод</option>
+                  </select>
+                </Field>
+                <Field label="Примечание">
+                  <input name="note" />
+                </Field>
+              </FormBox>
+              <FormBox
+                title="Оплата подённому работнику"
+                action={laborExpenseAction}
+              >
+                <Field label="Имя работника">
+                  <input
+                    name="workerName"
+                    required
+                    placeholder="Например, Фируз"
+                  />
+                </Field>
+                <Field label="Дата работы">
+                  <input
+                    name="workDate"
+                    type="date"
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                    required
+                  />
+                </Field>
+                <Field label="Сумма оплаты">
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <Field label="Что выполнял">
+                  <input name="note" placeholder="Замес, выпечка, уборка..." />
+                </Field>
+              </FormBox>
+              <FormBox title="Другой расход" action={expenseAction}>
+                <Field label="Категория">
+                  <select name="category">
+                    <option>Сырьё</option>
+                    <option>Транспорт</option>
+                    <option>Упаковка</option>
+                    <option>Коммунальные</option>
+                    <option>Ремонт</option>
+                    <option>Прочее</option>
+                  </select>
+                </Field>
+                <Field label="Сумма">
+                  <input
+                    name="amount"
+                    type="number"
+                    min=".01"
+                    step=".01"
+                    required
+                  />
+                </Field>
+                <Field label="Примечание">
+                  <input name="note" />
+                </Field>
+              </FormBox>
+            </div>
+            <section className="stats">
+              <div className="stat">
+                <small>Получено сегодня</small>
+                <b>{money(received)}</b>
+              </div>
+              <div className="stat">
+                <small>Расходы сегодня</small>
+                <b>{money(todayExpense)}</b>
+              </div>
+              <div className="stat">
+                <small>Нам должны клиенты</small>
+                <b>{money(debt)}</b>
+              </div>
+              <div className="stat">
+                <small>Мы должны поставщикам</small>
+                <b>
+                  {money(
+                    suppliers.reduce(
+                      (a, s) =>
+                        a +
+                        s.debts.reduce(
+                          (x, d) => x + Math.max(0, d.amount - d.paidAmount),
+                          0,
+                        ),
+                      0,
+                    ),
+                  )}
+                </b>
+              </div>
+            </section>
+            <section className="card tableCard">
+              <h3>Последние расходы</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Категория</th>
+                    <th>Описание / работник</th>
+                    <th>Сумма</th>
+                    <th>Записал</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map((e) => (
+                    <tr key={e.id}>
+                      <td>{dt(e.spentAt)}</td>
+                      <td>
+                        <span
+                          className={
+                            e.category === "Оплата работников"
+                              ? "expenseTag labor"
+                              : "expenseTag"
+                          }
+                        >
+                          {e.category}
+                        </span>
+                      </td>
+                      <td>{e.note || "—"}</td>
+                      <td className="red">{money(e.amount)}</td>
+                      <td>{e.user.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </>
+        )}
+        {tab === "reports" && user.role === "OWNER" && (
+          <AnalyticsDashboard
+            periods={periods.map(([name, r]) => ({ name, ...r }))}
+            dailySales={dailySales}
+            products={productSales}
+            expenses={expenseCategories}
+            debts={customerDebts}
+            demand={customerDemand}
+          />
+        )}
+      </main>
+    </div>
+  );
+}

@@ -133,10 +133,23 @@ model Customer {
   bonusPoints Int        @default(0)
   bonusTier   String     @default("Базовый")
   active      Boolean    @default(true)
+  companyId   Int?
+  company     CustomerCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   shipments   Shipment[]
   payments    Payment[]
   debts       CustomerDebt[]
   createdAt   DateTime   @default(now())
+
+  @@index([companyId])
+}
+
+model CustomerCompany {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  phone     String?
+  active    Boolean    @default(true)
+  shops     Customer[]
+  createdAt DateTime   @default(now())
 }
 
 model CustomerDebt {
