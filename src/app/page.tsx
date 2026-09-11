@@ -141,6 +141,8 @@ export default async function Home({
     to?: string;
     cutoff?: string;
     customerId?: string;
+    companyId?: string;
+    scope?: string;
   }>;
 }) {
   const user = await getUser();
@@ -251,11 +253,18 @@ export default async function Home({
       ? q.from!
       : defaultCutoff,
     reconTo = /^\d{4}-\d{2}-\d{2}$/.test(q.to || "") ? q.to! : todayValue,
-    reconCustomerId =
-      Number(q.customerId) ||
+    reconCompanyId = q.scope
+      ? Number(/^company:(\d+)$/.exec(q.scope)?.[1]) || 0
+      : Number(q.companyId) || 0,
+    reconCustomerId = reconCompanyId ? 0 :
+      Number(/^customer:(\d+)$/.exec(q.scope || "")?.[1]) || Number(q.customerId) ||
       customers.find((c) => c.active)?.id ||
       customers[0]?.id ||
       0,
+    reconScope = reconCompanyId ? `company:${reconCompanyId}` : `customer:${reconCustomerId}`,
+    reconName = reconCompanyId
+      ? companies.find((c) => c.id === reconCompanyId)?.name
+      : customers.find((c) => c.id === reconCustomerId)?.name,
     parseDay = (value: string) => {
       const [y, m, d] = value.split("-").map(Number);
       return new Date(y, m - 1, d);
@@ -264,15 +273,17 @@ export default async function Home({
     reconEnd = parseDay(reconTo);
   reconEnd.setDate(reconEnd.getDate() + 1);
   const reconciliationShipments =
-    tab === "reconciliation" && reconCustomerId
+    tab === "reconciliation" && (reconCompanyId || reconCustomerId)
       ? await db.shipment.findMany({
           where: {
-            customerId: reconCustomerId,
+            ...(reconCompanyId
+              ? { customer: { companyId: reconCompanyId } }
+              : { customerId: reconCustomerId }),
             status: "DELIVERED",
             deliveredAt: { gte: reconStart, lt: reconEnd },
           },
-          include: { items: { include: { product: true } } },
-          orderBy: { deliveredAt: "asc" },
+          include: { customer: { select: { name: true } }, items: { include: { product: true } } },
+          orderBy: [{ deliveredAt: "asc" }, { id: "asc" }],
         })
       : [];
   const todayShip = shipments.filter((x) => x.deliveredAt >= day),
@@ -664,18 +675,25 @@ export default async function Home({
           <>
             <section className="card reconciliationFilter">
               <div>
-                <p className="eyebrow">СВЕРКА С МАГАЗИНОМ</p>
-                <h3>Выберите магазин и период</h3>
+                <p className="eyebrow">СВЕРКА</p>
+                <h3>Выберите компанию или магазин и период</h3>
               </div>
               <form method="get" className="periodFilter">
                 <input type="hidden" name="tab" value="reconciliation" />
-                <Field label="Магазин">
-                  <select name="customerId" defaultValue={reconCustomerId}>
+                <Field label="Компания или магазин">
+                  <select name="scope" defaultValue={reconScope}>
+                    <optgroup label="Компании — все магазины">
+                      {companies.map((c) => (
+                        <option key={c.id} value={`company:${c.id}`}>{c.name} — все магазины</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Отдельные магазины">
                     {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
+                      <option key={c.id} value={`customer:${c.id}`}>
                         {c.name}
                       </option>
                     ))}
+                    </optgroup>
                   </select>
                 </Field>
                 <Field label="С какого числа">
@@ -743,13 +761,14 @@ export default async function Home({
               </div>
             </section>
             <section className="card tableCard">
-              <h3>Список накладных</h3>
+              <h3>Накладные: {reconName || "не выбран клиент"}</h3>
               {reconciliationShipments.length ? (
                 <table>
                   <thead>
                     <tr>
                       <th>Дата</th>
                       <th>№ накладной</th>
+                      <th>Магазин</th>
                       <th>Товары</th>
                       <th>Сумма</th>
                       <th>Оплачено</th>
@@ -764,6 +783,7 @@ export default async function Home({
                         <td>
                           <b>№ {s.id}</b>
                         </td>
+                        <td>{s.customer.name}</td>
                         <td>
                           {s.items.map((i) => (
                             <div className="shipmentItem" key={i.id}>
@@ -1292,7 +1312,7 @@ export default async function Home({
             </div>
             {companies.map((company) => {
               const total = company.shops.reduce((sum, shop) => sum + shop.shipments.reduce((a, x) => a + Math.max(0, x.total - x.paidAmount), 0) + shop.debts.reduce((a, x) => a + Math.max(0, x.amount - x.paidAmount), 0), 0);
-              return <section className="card companyCard" key={company.id}><div className="cardHead"><div><small>КОМПАНИЯ</small><h3>{company.name}</h3></div><strong className={total > 0 ? "red" : ""}>Общий долг: {money(total)}</strong></div><div className="companyShops">{company.shops.map((shop) => <span key={shop.id}><b>{shop.name}</b><small>{money(shop.shipments.reduce((a, x) => a + Math.max(0, x.total - x.paidAmount), 0) + shop.debts.reduce((a, x) => a + Math.max(0, x.amount - x.paidAmount), 0))}</small></span>)}</div></section>;
+              return <section className="card companyCard" key={company.id}><div className="cardHead"><div><small>КОМПАНИЯ</small><h3>{company.name}</h3><Link className="printLink" href={`/?tab=reconciliation&companyId=${company.id}`}>Сверка — все магазины</Link></div><strong className={total > 0 ? "red" : ""}>Общий долг: {money(total)}</strong></div><div className="companyShops">{company.shops.map((shop) => <span key={shop.id}><b>{shop.name}</b><small>{money(shop.shipments.reduce((a, x) => a + Math.max(0, x.total - x.paidAmount), 0) + shop.debts.reduce((a, x) => a + Math.max(0, x.amount - x.paidAmount), 0))}</small></span>)}</div></section>;
             })}
             <section className="card debtCutoff">
               <div>
