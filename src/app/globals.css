@@ -127,7 +127,7 @@ details[open]>form,details[open]>.miniForm{padding:4px 12px 13px}
  .invoiceMeta {display:block;padding:1mm 0;}
  .invoiceMeta>div {margin-bottom:1mm;gap:0;}
  .invoiceMeta small,.invoiceMeta span,.invoiceMeta b {font-size:14pt;}
- .invoiceMeta .invoiceAddress {font-size:12pt;}
+ .invoiceMeta .invoiceAddress {font-size:8pt;}
  .invoiceExpeditor {font-size:14pt;white-space:nowrap;overflow-wrap:normal;}
  .invoice table,.invoice tbody {display:block;width:100%;min-width:0;font-size:16pt;}
  .invoice thead {display:none;}
