@@ -1,3 +1,4 @@
+import {shipmentRevision} from "@/lib/edit-shipment";
 import Link from "next/link";
 import AppNavigation from "@/components/AppNavigation";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
@@ -17,6 +18,8 @@ import {
   openingDebtAction,
   laborExpenseAction,
   expenseAction,
+  editExpenseAction,
+  editShipmentAction,
   ingredientAction,
   createIngredientAction,
   updateIngredientAction,
@@ -209,7 +212,7 @@ export default async function Home({
     db.shipment.findMany({
       include: { customer: true, items: { include: { product: true } } },
       orderBy: { deliveredAt: "desc" },
-      take: 30,
+      take: tab === "shipments" ? undefined : 30,
     }),
     db.productionBatch.findMany({
       include: { product: true, user: true },
@@ -630,7 +633,8 @@ export default async function Home({
                           <Printer size={14} />
                           Печать
                         </Link>
-                        <details>
+                        {user.role==='OWNER'&&<details><summary>Редактировать отгрузку</summary><form action={editShipmentAction} className="shipmentEditForm"><input type="hidden" name="shipmentId" value={s.id}/><input type="hidden" name="revision" value={shipmentRevision(s.total,s.items)}/><p>Количество 0 убирает изделие. Оплаты сохраняются. Для изделия с возвратами цена сохраняется.</p>{s.items.map(i=><div className="shipmentEditLine" key={i.id}><select name="editProductId" aria-label="Изделие" defaultValue={i.productId}>{products.filter(p=>p.active||p.id===i.productId).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><label>Количество<input name="editQuantity" type="number" min="0" step="1" defaultValue={i.quantity} required/></label><label>Цена<input name="editPrice" type="number" min="0" step=".01" defaultValue={i.price} required/></label></div>)}<div className="shipmentEditLine"><select name="editProductId" aria-label="Добавить изделие" defaultValue="0"><option value="0">Добавить изделие (необязательно)</option>{products.filter(p=>p.active&&!s.items.some(i=>i.productId===p.id)).map(p=><option key={p.id} value={p.id}>{p.name} · {money(p.price)}</option>)}</select><label>Количество<input name="editQuantity" type="number" min="0" step="1" defaultValue="0"/></label><label>Цена<input name="editPrice" type="number" min="0" step=".01" defaultValue="0"/></label></div><button>Сохранить изменения</button></form></details>}
+<details>
                           <summary>Возврат</summary>
                           {s.items.map((i) => (
                             <form
@@ -2030,7 +2034,7 @@ export default async function Home({
                       </td>
                       <td>{e.note || "—"}</td>
                       <td className="red">{money(e.amount)}</td>
-                      <td>{e.user.name}</td>
+                      <td>{e.user.name}<details><summary>Редактировать</summary><form action={editExpenseAction} className="miniForm"><input type="hidden" name="id" value={e.id}/><input type="hidden" name="originalAmount" value={e.amount}/><input type="hidden" name="originalCategory" value={e.category}/><input type="hidden" name="originalNote" value={e.note??''}/><input type="hidden" name="originalNoteNull" value={e.note===null?'yes':'no'}/><input type="hidden" name="originalDate" value={e.spentAt.toISOString()}/><label>Дата<input name="spentAt" type="date" defaultValue={new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dushanbe',year:'numeric',month:'2-digit',day:'2-digit'}).format(e.spentAt)} required/></label><label>Категория<input name="category" defaultValue={e.category} required/></label><label>Сумма<input name="amount" type="number" min=".01" step=".01" defaultValue={e.amount} required/></label><label>Описание / работник<input name="note" defaultValue={e.note??''}/></label><button>Сохранить</button></form></details></td>
                     </tr>
                   ))}
                 </tbody>

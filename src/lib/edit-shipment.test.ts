@@ -1,0 +1,43 @@
+import {editExpense} from './edit-expense';
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {PrismaClient} from '@prisma/client';
+import {editShipment,shipmentRevision} from './edit-shipment';
+import {saveShipmentReturn} from './shipment-return';
+test('editing deliveries preserves returns/payments and atomically adjusts stock and net total',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'lochari-edit-'));writeFileSync(join(dir,'test.db'),'');const url='file:'+join(dir,'test.db').replaceAll('\\','/');
+ execFileSync(process.execPath,['node_modules/prisma/build/index.js','db','push','--skip-generate'],{env:{...process.env,DATABASE_URL:url},stdio:'pipe'});const db=new PrismaClient({datasourceUrl:url});
+ try{
+ const user=await db.user.create({data:{name:'Tester',username:'test',passwordHash:'test',role:'OWNER'}});
+ const customer=await db.customer.create({data:{name:'Shop',bonusPoints:10}});
+ const product=await db.product.create({data:{name:'Bread',sku:'T',price:99,stock:{create:{quantity:5}}}});
+ const other=await db.product.create({data:{name:'Other',sku:'O',price:7,stock:{create:{quantity:10}}}});
+ const s=await db.shipment.create({data:{customerId:customer.id,userId:user.id,total:100,paidAmount:60,items:{create:{productId:product.id,quantity:10,price:10,costPrice:3}}}});
+ await db.payment.create({data:{customerId:customer.id,shipmentId:s.id,amount:60}});
+ await db.$transaction(tx=>saveShipmentReturn(tx,{shipmentId:s.id,productId:product.id,quantity:2,userId:user.id,note:'Test'}));
+ const read=()=>db.shipment.findUniqueOrThrow({where:{id:s.id},include:{items:true}});
+ const before=await read();const revision=shipmentRevision(before.total,before.items);
+ await db.$transaction(tx=>editShipment(tx,s.id,user.id,[{productId:product.id,quantity:8,price:10},{productId:other.id,quantity:3,price:7}],revision));
+ const after=await read();assert.equal(after.total,81);assert.equal(after.paidAmount,60);assert.equal(after.items.find(i=>i.productId===product.id)?.costPrice,3);
+ assert.equal((await db.productStock.findUniqueOrThrow({where:{productId:product.id}})).quantity,9);
+ assert.equal((await db.productStock.findUniqueOrThrow({where:{productId:other.id}})).quantity,7);
+ assert.equal(await db.payment.count(),1);assert.equal(await db.productMovement.count({where:{type:'RETURN'}}),1);
+ await assert.rejects(db.$transaction(tx=>editShipment(tx,s.id,user.id,[{productId:product.id,quantity:8,price:10}],revision)));
+ const rev=shipmentRevision(after.total,after.items);
+ for(const items of [[{productId:product.id,quantity:1,price:10}],[{productId:product.id,quantity:8,price:11}],[{productId:product.id,quantity:9,price:10},{productId:other.id,quantity:100,price:7}],[{productId:product.id,quantity:2.5,price:10}]])await assert.rejects(db.$transaction(tx=>editShipment(tx,s.id,user.id,items,rev)));
+ assert.equal((await read()).total,81);assert.equal((await db.productStock.findUniqueOrThrow({where:{productId:product.id}})).quantity,9);
+ await db.$transaction(tx=>editShipment(tx,s.id,user.id,[{productId:product.id,quantity:4,price:10}],rev));
+ assert.equal((await read()).total,20);assert.equal((await read()).paidAmount,60);assert.equal((await read()).items.length,1);assert.equal((await db.productStock.findUniqueOrThrow({where:{productId:other.id}})).quantity,10);
+ const expense=await db.expense.create({data:{userId:user.id,amount:10,category:'Транспорт',note:''}});
+ const edit={id:expense.id,amount:25,category:'Доставка',note:'Исправлено',date:'2026-10-12',original:{amount:expense.amount,category:expense.category,note:expense.note,spentAt:expense.spentAt}};
+ await db.$transaction(tx=>editExpense(tx,edit));
+ const changed=await db.expense.findUniqueOrThrow({where:{id:expense.id}});assert.equal(changed.amount,25);assert.equal(changed.category,'Доставка');assert.equal(changed.note,'Исправлено');assert.equal(changed.userId,user.id);assert.equal(changed.spentAt.toISOString(),'2026-10-12T07:00:00.000Z');
+ await assert.rejects(db.$transaction(tx=>editExpense(tx,edit)));
+ for(const date of ['2026-02-31','invalid'])await assert.rejects(db.$transaction(tx=>editExpense(tx,{...edit,date})));
+ assert.equal((await db.expense.findUniqueOrThrow({where:{id:expense.id}})).amount,25);
+ }finally{await db.$disconnect();rmSync(dir,{recursive:true,force:true});}
+});
