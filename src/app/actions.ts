@@ -11,6 +11,7 @@ import {
   setSession,
 } from "@/lib/auth";
 import { calculateProductionUsage } from "@/lib/production";
+import { saveShipmentReturn } from "@/lib/shipment-return";
 import { isValidShipmentItems, type ShipmentItem } from "@/lib/shipment";
 const n = (v: FormDataEntryValue | null) => Number(v);
 const go = (tab: string, msg: string) => {
@@ -571,38 +572,8 @@ export async function returnShipmentItemAction(f: FormData) {
     shipmentId = n(f.get("shipmentId")),
     productId = n(f.get("productId")),
     quantity = n(f.get("quantity"));
-  if (quantity <= 0) throw new Error("Введите количество возврата");
-  await db.$transaction(async (tx) => {
-    const line = await tx.shipmentItem.findFirst({
-      where: { shipmentId, productId },
-    });
-    if (!line) throw new Error("Позиция не найдена в накладной");
-    const returned = await tx.productMovement.aggregate({
-        _sum: { quantity: true },
-        where: { shipmentId, productId, type: "RETURN" },
-      }),
-      already = returned._sum.quantity || 0;
-    if (already + quantity > line.quantity)
-      throw new Error("Возврат больше отгруженного количества");
-    await tx.productStock.update({
-      where: { productId },
-      data: { quantity: { increment: quantity } },
-    });
-    await tx.productMovement.create({
-      data: {
-        productId,
-        type: "RETURN",
-        quantity,
-        userId: u.id,
-        shipmentId,
-        note: String(f.get("note") || "Возврат от клиента"),
-      },
-    });
-    await tx.shipment.update({
-      where: { id: shipmentId },
-      data: { total: { decrement: line.price * quantity } },
-    });
-  });
+  await db.$transaction(tx => saveShipmentReturn(tx, {shipmentId, productId, quantity, userId:u.id, note:String(f.get("note") || "Возврат от клиента")}));
+  revalidatePath("/shipments/" + shipmentId + "/print");
   go("shipments", "Возврат принят на склад");
 }
 export async function writeOffProductAction(f: FormData) {
