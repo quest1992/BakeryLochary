@@ -3,8 +3,7 @@ import {useState} from 'react';
 import {Bluetooth,Printer} from 'lucide-react';
 import {encodeRaster} from '@/lib/thermal-raster';
 type Port={open(options:{baudRate:number}):Promise<void>;close():Promise<void>;writable:WritableStream<Uint8Array>|null};
-type Serial={requestPort(options:{filters:{bluetoothServiceClassId:string}[]}):Promise<Port>};
-const spp='00001101-0000-1000-8000-00805f9b34fb';
+type Serial={requestPort():Promise<Port>;getPorts():Promise<Port[]>};
 function receipt(){
  const root=document.querySelector('.invoice');if(!root)throw Error('Накладная не найдена');
  const canvas=document.createElement('canvas');canvas.width=576;canvas.height=16000;
@@ -27,21 +26,28 @@ function receipt(){
 }
 export default function PrintButton(){
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ async function checkBluetooth(){
+ const serial=(navigator as Navigator&{serial?:Serial}).serial;
+ const version=navigator.userAgent.match(/(?:Chrome|Chromium)\/([\d.]+)/)?.[1]||'не определена';
+ let known='';if(serial){try{known=' Ранее разрешённых принтеров: '+(await serial.getPorts()).length+'.';}catch{known=' Доступ к устройствам ограничен браузером.';}}
+ setMessage('Chrome: '+version+'. Прямая печать: '+(serial?'API доступен.':'API недоступен.')+known+' Если список пуст: проверьте сопряжение MPT-III и разрешение «Устройства поблизости» для Chrome, если оно есть в настройках телефона.');
+ }
  async function printBluetooth(){
  const serial=(navigator as Navigator&{serial?:Serial}).serial;
  if(!serial){setMessage('Прямая печать недоступна. Откройте сайт в обновлённом Chrome на Android.');return;}
  let port:Port|undefined,writer:WritableStreamDefaultWriter<Uint8Array>|undefined,sent=false;
  setBusy(true);setMessage('Выберите MPT-III. Если он занят, закройте RawBT.');
  try{
- port=await serial.requestPort({filters:[{bluetoothServiceClassId:spp}]});
+ // No service filter: some Android printer ports are exposed without SPP metadata.
+ port=await serial.requestPort();
  await document.fonts.ready;const {ctx,height}=receipt();
  await port.open({baudRate:9600});if(!port.writable)throw Error('Принтер недоступен');writer=port.writable.getWriter();
  const write=async(data:Uint8Array)=>{for(let i=0;i<data.length;i+=1024){sent=true;await writer!.write(data.slice(i,i+1024));await new Promise(resolve=>setTimeout(resolve,20));}};
  await write(new Uint8Array([27,64]));
  for(let y=0;y<height;y+=128){const h=Math.min(128,height-y);await write(encodeRaster(ctx.getImageData(0,y,576,h).data,576,h));}
  await write(new Uint8Array([10,10,10]));setMessage('Накладная отправлена. Проверьте распечатку на принтере.');
- }catch(error){const name=error instanceof Error?error.name:'';setMessage(name==='NotFoundError'?'Выбор принтера отменён.':(sent?'Передача прервалась; часть накладной могла напечататься. ':'Не удалось подключиться. Закройте RawBT, включите принтер и проверьте сопряжение MPT-III. ')+'Обычная печать остаётся доступна.');}
+ }catch(error){const name=error instanceof Error?error.name:'';setMessage(name==='NotFoundError'?'Принтер не выбран или Chrome не нашёл доступных устройств. Поиск выполняется без фильтра. Нажмите «Проверить Bluetooth» и сообщите результат.':(sent?'Передача прервалась; часть накладной могла напечататься. ':'Не удалось подключиться ('+ (name||'ошибка') +'). Включите принтер и проверьте сопряжение MPT-III. ')+'Обычная печать остаётся доступна.');}
  finally{writer?.releaseLock();if(port)await port.close().catch(()=>{});setBusy(false);}
  }
- return <div className="invoicePrintControls"><div className="invoicePrintButtons"><button className="printButton" onClick={()=>window.print()}><Printer size={17}/>Печать / PDF</button><button type="button" disabled={busy} onClick={printBluetooth}><Bluetooth size={17}/>{busy?'Отправка…':'Печать Bluetooth'}</button></div>{message&&<p role="status">{message}</p>}</div>;
+ return <div className="invoicePrintControls"><div className="invoicePrintButtons"><button className="printButton" onClick={()=>window.print()}><Printer size={17}/>Печать / PDF</button><button type="button" disabled={busy} onClick={printBluetooth}><Bluetooth size={17}/>{busy?'Отправка…':'Печать Bluetooth'}</button><button type="button" disabled={busy} onClick={checkBluetooth}>Проверить Bluetooth</button></div>{message&&<p role="status">{message}</p>}</div>;
 }
