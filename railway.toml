@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 [deploy]
 # Production releases must not mutate schema or bootstrap business data.
-startCommand = "pnpm start -p $PORT"
+startCommand = "pnpm start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
