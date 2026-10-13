@@ -157,3 +157,4 @@ details[open]>form,details[open]>.miniForm{padding:4px 12px 13px}
 
 .invoiceSignature {display:flex;align-items:baseline;gap:8px;white-space:nowrap;}
 .invoiceSignature i {flex:1;min-width:0;border-bottom:1px solid currentColor;}
+.invoicePrintControls{max-width:100%}.invoicePrintButtons{display:flex;flex-wrap:wrap;gap:8px}.invoicePrintControls p{max-width:420px;font-size:13px;margin:8px 0 0}@media(max-width:600px){.invoiceToolbar{align-items:flex-start;gap:10px;flex-wrap:wrap}}
