@@ -10,6 +10,7 @@ import {
   requireUser,
   setSession,
 } from "@/lib/auth";
+import {editShipment,parseShipmentDate} from "@/lib/edit-shipment";
 import { calculateProductionUsage } from "@/lib/production";
 import { isValidShipmentItems, type ShipmentItem } from "@/lib/shipment";
 const n = (v: FormDataEntryValue | null) => Number(v);
@@ -981,4 +982,13 @@ export async function addInvestmentBuybackAction(f: FormData) {
     });
   });
   go("finance", "Выкуп доли записан");
+}
+
+export async function editShipmentAction(f:FormData){
+ const u=await requireOwner();
+ const productIds=f.getAll('editProductId'),quantities=f.getAll('editQuantity'),prices=f.getAll('editPrice');
+ const items=productIds.map((id,index)=>({productId:Number(id),quantity:Number(quantities[index]),price:Number(prices[index])})).filter(i=>i.productId!==0);
+ const id=n(f.get('shipmentId'));
+ await db.$transaction(tx=>editShipment(tx,id,u.id,items,String(f.get('revision')||''),{customerId:n(f.get('editCustomerId')),deliveredAt:parseShipmentDate(String(f.get('editDeliveredAt')||'')),originalCustomerId:n(f.get('originalCustomerId')),originalDeliveredAt:String(f.get('originalDeliveredAt')||''),originalPaidAmount:n(f.get('originalPaidAmount'))}));
+ revalidatePath('/shipments/'+id+'/print');go('shipments','Отгрузка изменена, склад и сумма пересчитаны');
 }

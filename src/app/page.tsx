@@ -1,3 +1,4 @@
+import ShipmentEditor from "@/components/ShipmentEditor";
 import Link from "next/link";
 import AppNavigation from "@/components/AppNavigation";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
@@ -627,6 +628,7 @@ export default async function Home({
                           <Printer size={14} />
                           Печать
                         </Link>
+{user.role==='OWNER'&&<ShipmentEditor s={s} products={products} customers={customers}/>}
                         <details>
                           <summary>Возврат</summary>
                           {s.items.map((i) => (
