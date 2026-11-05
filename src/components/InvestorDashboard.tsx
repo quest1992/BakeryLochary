@@ -1,8 +1,9 @@
+import {money} from "@/lib/money";
 import Link from "next/link";
 import AppNavigation from "./AppNavigation";
 import {getInvestorFinance,parseFinancialPeriod} from "@/lib/investor-finance";
 
-const money=(value:number)=>new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(value)+" с.";
+
 const date=(value:string)=>new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(value));
 
 export default async function InvestorDashboard({user,tab,from,to}:{user:{name:string};tab:string;from?:string;to?:string}){

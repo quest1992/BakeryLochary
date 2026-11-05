@@ -1,3 +1,4 @@
+import {money} from "@/lib/money";
 import ShipmentEditor from "@/components/ShipmentEditor";
 import Link from "next/link";
 import AppNavigation from "@/components/AppNavigation";
@@ -65,14 +66,8 @@ import {
 } from "lucide-react";
 import { calculateCustomerDemand } from "@/lib/customer-demand";
 import { splitCustomerDebt } from "@/lib/customer-debt";
-const money = (v: number) =>
-  new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(v) +
-  " с.";
-const unitMoney = (v: number) =>
-  new Intl.NumberFormat("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 5,
-  }).format(v) + " с.";
+
+const unitMoney = money;
 const dt = (d: Date) =>
   new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",

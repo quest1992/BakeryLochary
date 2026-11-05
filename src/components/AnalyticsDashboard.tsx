@@ -1,7 +1,8 @@
+import {money} from "@/lib/money";
 type Period={name:string;sales:number;cogs:number;gross:number;expense:number;net:number;paid:number;made:number;returned:number;returnCost:number;writtenOff:number;writeOffCost:number};
 type Point={label:string;value:number};
 type Demand={customerId:number;customerName:string;productId:number;productName:string;weeklyQuantity:number;dailyAverage:number;recommended:number;todayQuantity:number;shortage:number;missedDays:number};
-const money=(value:number)=>new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(value)+" с.";
+
 const BarList=({items,empty}:{items:Point[];empty:string})=>{const max=Math.max(1,...items.map(x=>x.value));return <div className="analyticsBars">{items.length?items.map((item,index)=><div className="analyticsBar" key={item.label}><div><span><i>{index+1}</i>{item.label}</span><b>{money(item.value)}</b></div><div className="analyticsTrack"><span style={{width:(item.value/max*100)+"%"}}/></div></div>):<p className="analyticsEmpty">{empty}</p>}</div>};
 export default function AnalyticsDashboard({periods,dailySales,products,expenses,debts,demand}:{periods:Period[];dailySales:Point[];products:Point[];expenses:Point[];debts:Point[];demand:Demand[]}){
  const maxDay=Math.max(1,...dailySales.map(x=>x.value));
