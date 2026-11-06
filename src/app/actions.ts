@@ -3,6 +3,7 @@ import { compare, hash } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import {applyShipmentPayment} from "@/lib/shipment-payment";
 import {
   clearSession,
   requireBusinessWriter,
@@ -131,13 +132,13 @@ export async function shipmentAction(f: FormData) {
         throw new Error("Недостаточно на складе: " + p.name);
       total += p.price * item.quantity;
     }
-    if (paid < 0 || paid > total) throw new Error("Проверьте сумму оплаты");
+    if (!Number.isFinite(paid) || paid < 0 || !Number.isSafeInteger(Math.round(paid * 100))) throw new Error("Проверьте сумму оплаты");
     const s = await tx.shipment.create({
       data: {
         customerId,
         userId: u.id,
         total,
-        paidAmount: paid,
+        paidAmount: 0,
         status: "DELIVERED",
         note: String(f.get("note") || ""),
         items: {
@@ -169,15 +170,7 @@ export async function shipmentAction(f: FormData) {
         },
       });
     }
-    if (paid > 0)
-      await tx.payment.create({
-        data: {
-          customerId,
-          shipmentId: s.id,
-          amount: paid,
-          method: String(f.get("method")) === "TRANSFER" ? "TRANSFER" : "CASH",
-        },
-      });
+    await applyShipmentPayment(tx, customerId, paid, String(f.get("method")) === "TRANSFER" ? "TRANSFER" : "CASH");
     await tx.customer.update({
       where: { id: customerId },
       data: { bonusPoints: { increment: Math.floor(total / 10) } },
