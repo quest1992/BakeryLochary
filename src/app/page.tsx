@@ -68,8 +68,9 @@ import { calculateCustomerDemand } from "@/lib/customer-demand";
 import { splitCustomerDebt } from "@/lib/customer-debt";
 
 const unitMoney = money;
-const dt = (d: Date) =>
+const dt = (d: Date, timeZone?: string) =>
   new Intl.DateTimeFormat("ru-RU", {
+    timeZone,
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -525,7 +526,7 @@ export default async function Home({
                       <div>
                         <b>{s.customer.name}</b>
                         <small>
-                          {dt(s.deliveredAt)} ·{" "}
+                          {dt(s.deliveredAt, "Asia/Dushanbe")} ·{" "}
                           {s.items.reduce((a, i) => a + i.quantity, 0)} шт.
                         </small>
                       </div>
@@ -609,7 +610,7 @@ export default async function Home({
                 <tbody>
                   {shipments.map((s) => (
                     <tr key={s.id}>
-                      <td>{dt(s.deliveredAt)}</td>
+                      <td>{dt(s.deliveredAt, "Asia/Dushanbe")}</td>
                       <td>
                         <b>{s.customer.name}</b>
                       </td>
@@ -786,7 +787,7 @@ export default async function Home({
                   <tbody>
                     {reconciliationShipments.map((s) => (
                       <tr key={s.id}>
-                        <td>{dt(s.deliveredAt)}</td>
+                        <td>{dt(s.deliveredAt, "Asia/Dushanbe")}</td>
                         <td>
                           <b>№ {s.id}</b>
                         </td>
