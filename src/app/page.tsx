@@ -190,7 +190,7 @@ export default async function Home({
     }),
     db.ingredient.findMany({ orderBy: { name: "asc" } }),
     db.customer.findMany({
-      include: { company: true, shipments: true, payments: true, debts: true },
+      include: { company: true, shipments: { include: { items: { include: { product: true } } } }, payments: true, debts: true },
       orderBy: { name: "asc" },
     }),
     db.customerCompany.findMany({
@@ -573,7 +573,17 @@ export default async function Home({
               compact={tab === "expedition"}
               customers={customers
                 .filter((c) => c.active)
-                .map((c) => ({ id: c.id, name: c.name }))}
+                .map((c) => ({ id: c.id, name: c.name, debtEntries: [
+                  ...c.shipments.filter(s => s.status === "DELIVERED" && s.total > s.paidAmount).map(s => ({
+                    id: "shipment-" + s.id, shipmentId: s.id, date: s.deliveredAt.toISOString(),
+                    amount: s.total, paid: s.paidAmount,
+                    items: s.items.map(i => ({ name: i.product.name, quantity: i.quantity, price: i.price })),
+                  })),
+                  ...c.debts.filter(d => d.amount > d.paidAmount).map(d => ({
+                    id: "opening-" + d.id, date: d.debtDate.toISOString(), amount: d.amount,
+                    paid: d.paidAmount, items: [], note: d.note || "Долг до начала учёта",
+                  })),
+                ].sort((a, b) => b.date.localeCompare(a.date)) }))}
               products={products
                 .filter((p) => p.active)
                 .map((p) => ({
