@@ -155,11 +155,13 @@ export default async function Home({
         to={q.to}
       />
     );
+  const analytics = tab === "reports";
   const now = new Date(),
-    day = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-    week = new Date(now);
-  week.setDate(now.getDate() - 6);
-  const month = new Date(now.getFullYear(), now.getMonth(), 1);
+    dushanbeDate = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Dushanbe",year:"numeric",month:"2-digit",day:"2-digit"}).format(now),
+    day = analytics ? new Date(dushanbeDate + "T00:00:00+05:00") : new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    week = new Date(analytics ? day : now);
+  week.setDate(week.getDate() - 6);
+  const month = analytics ? new Date(dushanbeDate.slice(0,7) + "-01T00:00:00+05:00") : new Date(now.getFullYear(), now.getMonth(), 1);
   const demandFrom = new Date(day);
   demandFrom.setDate(day.getDate() - 7);
   const defaultCutoff = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`,
@@ -204,20 +206,21 @@ export default async function Home({
       orderBy: { name: "asc" },
     }),
     db.shipment.findMany({
+      where: analytics ? {status: "DELIVERED"} : undefined,
       include: { customer: true, items: { include: { product: true } } },
       orderBy: { deliveredAt: "desc" },
-      take: 30,
+      take: analytics ? undefined : 30,
     }),
     db.productionBatch.findMany({
       include: { product: true, user: true },
       orderBy: { producedAt: "desc" },
-      take: 20,
+      take: analytics ? undefined : 20,
     }),
-    db.payment.findMany({ orderBy: { paidAt: "desc" }, take: 30 }),
+    db.payment.findMany({ orderBy: { paidAt: "desc" }, take: analytics ? undefined : 30 }),
     db.expense.findMany({
       include: { user: true },
       orderBy: { spentAt: "desc" },
-      take: 50,
+      take: analytics ? undefined : 50,
     }),
     db.ingredientMovement.findMany({
       include: { ingredient: true },
@@ -238,7 +241,7 @@ export default async function Home({
       take: 40,
     }),
     db.user.findMany({ orderBy: { name: "asc" } }),
-    db.productMovement.findMany({ orderBy: { createdAt: "desc" }, take: 500 }),
+    db.productMovement.findMany({ orderBy: { createdAt: "desc" }, take: analytics ? undefined : 500 }),
     db.shipment.findMany({
       where: { deliveredAt: { gte: demandFrom } },
       include: { customer: true, items: { include: { product: true } } },
