@@ -29,6 +29,8 @@ test('invoice debt is hidden by default and totals only the selected customer wh
   const customer=await db.customer.create({data:{name:'Клиент'}});
   const other=await db.customer.create({data:{name:'Другой клиент',showDebtOnInvoice:true}});
   assert.equal(customer.showDebtOnInvoice,false);
+  assert.equal(customer.allowInvoiceShare,false);
+  assert.equal(customer.whatsappNumber,null);assert.equal(customer.telegramNumber,null);
   await db.customerDebt.create({data:{customerId:customer.id,amount:100,paidAmount:25}});
   await db.customerDebt.create({data:{customerId:other.id,amount:900}});
   await db.shipment.create({data:{customerId:customer.id,userId:user.id,total:187.2,paidAmount:100}});

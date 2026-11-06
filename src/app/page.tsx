@@ -1477,6 +1477,7 @@ export default async function Home({
                           />
                         </Field>
                         {user.role === "OWNER" && <label style={{display:"flex",flexDirection:"row",alignItems:"center",gap:8}}><input type="checkbox" name="showDebtOnInvoice" defaultChecked={c.showDebtOnInvoice}/>Показывать долг в накладной</label>}
+                        {user.role === "OWNER" && <><Field label="WhatsApp"><input name="whatsappNumber" type="tel" placeholder="+992…" defaultValue={c.whatsappNumber || ""}/></Field><Field label="Telegram"><input name="telegramNumber" type="tel" placeholder="+992…" defaultValue={c.telegramNumber || ""}/></Field><label style={{display:"flex",flexDirection:"row",alignItems:"center",gap:8}}><input type="checkbox" name="allowInvoiceShare" defaultChecked={c.allowInvoiceShare}/>Разрешить отправку накладной</label></>}
                         <button>Сохранить</button>
                       </form>
                     </details>

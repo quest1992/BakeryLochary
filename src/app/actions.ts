@@ -3,6 +3,7 @@ import { compare, hash } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import {parseInvoiceShareSettings} from "@/lib/invoice-share";
 import {applyShipmentPayment} from "@/lib/shipment-payment";
 import {
   clearSession,
@@ -659,6 +660,7 @@ export async function updateCustomerAction(f: FormData) {
       phone: String(f.get("phone") || ""),
       address: String(f.get("address") || ""),
       creditLimit: n(f.get("creditLimit")),
+      ...parseInvoiceShareSettings(f),
       showDebtOnInvoice: f.get("showDebtOnInvoice") === "on",
       companyId: companyId || null,
     },
