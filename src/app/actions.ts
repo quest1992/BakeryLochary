@@ -659,6 +659,7 @@ export async function updateCustomerAction(f: FormData) {
       phone: String(f.get("phone") || ""),
       address: String(f.get("address") || ""),
       creditLimit: n(f.get("creditLimit")),
+      showDebtOnInvoice: f.get("showDebtOnInvoice") === "on",
       companyId: companyId || null,
     },
   });

@@ -1476,6 +1476,7 @@ export default async function Home({
                             defaultValue={c.creditLimit}
                           />
                         </Field>
+                        {user.role === "OWNER" && <label style={{display:"flex",flexDirection:"row",alignItems:"center",gap:8}}><input type="checkbox" name="showDebtOnInvoice" defaultChecked={c.showDebtOnInvoice}/>Показывать долг в накладной</label>}
                         <button>Сохранить</button>
                       </form>
                     </details>

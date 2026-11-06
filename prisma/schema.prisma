@@ -130,6 +130,7 @@ model Customer {
   phone       String?
   address     String?
   creditLimit Float      @default(0)
+  showDebtOnInvoice Boolean @default(false)
   bonusPoints Int        @default(0)
   bonusTier   String     @default("Базовый")
   active      Boolean    @default(true)
