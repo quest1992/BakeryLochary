@@ -3,7 +3,7 @@ import { compare, hash } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import {parseInvoiceShareSettings} from "@/lib/invoice-share";
+import {canShareInvoice,parseInvoiceShareSettings} from "@/lib/invoice-share";
 import {applyShipmentPayment} from "@/lib/shipment-payment";
 import {
   clearSession,
@@ -118,7 +118,7 @@ export async function shipmentAction(f: FormData) {
     new Set(shipmentItems.map((i) => i.productId)).size !== shipmentItems.length
   )
     throw new Error("Одинаковая продукция добавлена дважды");
-  await db.$transaction(async (tx) => {
+  const shipment = await db.$transaction(async (tx) => {
     const ids = shipmentItems.map((i) => i.productId),
       products = await tx.product.findMany({
         where: { id: { in: ids }, active: true },
@@ -172,11 +172,17 @@ export async function shipmentAction(f: FormData) {
       });
     }
     await applyShipmentPayment(tx, customerId, paid, String(f.get("method")) === "TRANSFER" ? "TRANSFER" : "CASH");
-    await tx.customer.update({
+    const customer = await tx.customer.update({
       where: { id: customerId },
       data: { bonusPoints: { increment: Math.floor(total / 10) } },
     });
+    return {id: s.id, electronicInvoice: canShareInvoice(customer)};
   });
+  if (f.get("openInvoice") === "yes") {
+    revalidatePath("/");
+    const invoiceMode = shipment.electronicInvoice ? "share" : "print";
+    redirect("/shipments/" + shipment.id + "/print?invoice=" + invoiceMode);
+  }
   go("shipments", "Отгрузка сохранена");
 }
 export async function openingDebtAction(f: FormData) {

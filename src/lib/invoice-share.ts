@@ -15,6 +15,14 @@ export function parseInvoiceShareSettings(form: FormData) {
   return {whatsappNumber, telegramNumber, allowInvoiceShare};
 }
 
+export function canShareInvoice(customer: {
+  allowInvoiceShare: boolean;
+  whatsappNumber: string | null;
+  telegramNumber: string | null;
+}) {
+  return customer.allowInvoiceShare && Boolean(customer.whatsappNumber || customer.telegramNumber);
+}
+
 export type ShareInvoice = {
   id: number; customerName: string; address: string; phone: string;
   deliveredAt: string; expeditor: string; note: string;

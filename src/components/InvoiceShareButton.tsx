@@ -5,8 +5,8 @@ import {Share2} from 'lucide-react';
 import {createInvoiceImage} from '@/lib/invoice-image';
 import {invoiceShareMessage, type ShareInvoice} from '@/lib/invoice-share';
 
-export default function InvoiceShareButton({invoice, whatsapp, telegram}: {invoice: ShareInvoice; whatsapp: string | null; telegram: string | null}) {
-  const [open, setOpen] = useState(false);
+export default function InvoiceShareButton({invoice, whatsapp, telegram, initiallyOpen = false}: {invoice: ShareInvoice; whatsapp: string | null; telegram: string | null; initiallyOpen?: boolean}) {
+  const [open, setOpen] = useState(initiallyOpen);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
   const [message, setMessage] = useState('');

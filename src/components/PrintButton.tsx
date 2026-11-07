@@ -25,7 +25,18 @@ function receipt(){
  if(y+16>16000)throw Error('Накладная слишком длинная для Bluetooth. Разделите накладную на несколько отгрузок.');
  return {ctx,height:y+16};
 }
-export default function PrintButton(){
+export default function PrintButton({autoPrint=false}:{autoPrint?:boolean}){
+ const autoPrinted=useRef(false);
+ useEffect(()=>{
+   if(!autoPrint||autoPrinted.current)return;
+   let active=true;
+   void document.fonts.ready.then(()=>{
+     if(!active)return;
+     autoPrinted.current=true;
+     window.print();
+   });
+   return()=>{active=false;};
+ },[autoPrint]);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const selected=useRef<Port|undefined>(undefined),printing=useRef(false);
  const preference='lochari-default-bluetooth-printer';
