@@ -3,7 +3,7 @@ import { compare, hash } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import {canShareInvoice,parseInvoiceShareSettings} from "@/lib/invoice-share";
+import {parseInvoiceShareSettings} from "@/lib/invoice-share";
 import {applyShipmentPayment} from "@/lib/shipment-payment";
 import {
   clearSession,
@@ -176,9 +176,9 @@ export async function shipmentAction(f: FormData) {
       where: { id: customerId },
       data: { bonusPoints: { increment: Math.floor(total / 10) } },
     });
-    return {id: s.id, electronicInvoice: canShareInvoice(customer)};
+    return {id: s.id, electronicInvoice: customer.allowInvoiceShare};
   });
-  if (f.get("openInvoice") === "yes") {
+  if (shipment.electronicInvoice || f.get("openInvoice") === "yes") {
     revalidatePath("/");
     const invoiceMode = shipment.electronicInvoice ? "share" : "print";
     redirect("/shipments/" + shipment.id + "/print?invoice=" + invoiceMode);

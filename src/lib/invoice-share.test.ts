@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {normalizeInvoicePhone,parseInvoiceShareSettings,invoiceShareMessage,type ShareInvoice} from './invoice-share';
 import {createInvoiceImage} from './invoice-image';
 
-test('sharing is disabled by default; enabling requires a valid saved messenger number',()=>{
+test('sharing follows the customer checkbox with or without a saved messenger number',()=>{
  assert.deepEqual(parseInvoiceShareSettings(new FormData()),{whatsappNumber:null,telegramNumber:null,allowInvoiceShare:false});
  assert.equal(normalizeInvoicePhone('+992 (90) 123-45-67'),'+992901234567');
  const form=new FormData();form.set('allowInvoiceShare','on');
- assert.throws(()=>parseInvoiceShareSettings(form));
+ assert.deepEqual(parseInvoiceShareSettings(form),{whatsappNumber:null,telegramNumber:null,allowInvoiceShare:true});
  form.set('telegramNumber','+992901234567');
  assert.equal(parseInvoiceShareSettings(form).allowInvoiceShare,true);
+ form.delete('allowInvoiceShare');
+ assert.equal(parseInvoiceShareSettings(form).allowInvoiceShare,false);
  for(const phone of ['abc','123','+1234567890123456','javascript:alert(1)'])assert.throws(()=>normalizeInvoicePhone(phone));
 });
 

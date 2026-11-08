@@ -6,7 +6,6 @@ import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import InvestorDashboard from "@/components/InvestorDashboard";
 import InvestmentManagement from "@/components/InvestmentManagement";
 import DeleteRecipeItem from "@/components/DeleteRecipeItem";
-import {canShareInvoice} from "@/lib/invoice-share";
 import ShipmentComposer from "@/components/ShipmentComposer";
 import PurchaseComposer from "@/components/PurchaseComposer";
 import SupplyMobile from "@/components/SupplyMobile";
@@ -581,7 +580,7 @@ export default async function Home({
               compact={tab === "expedition"}
               customers={customers
                 .filter((c) => c.active)
-                .map((c) => ({ id: c.id, name: c.name, electronicInvoice: canShareInvoice(c), debtEntries: [
+                .map((c) => ({ id: c.id, name: c.name, electronicInvoice: c.allowInvoiceShare, debtEntries: [
                   ...c.shipments.filter(s => s.status === "DELIVERED" && s.total > s.paidAmount).map(s => ({
                     id: "shipment-" + s.id, shipmentId: s.id, date: s.deliveredAt.toISOString(),
                     amount: s.total, paid: s.paidAmount,

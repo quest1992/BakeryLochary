@@ -11,16 +11,7 @@ export function parseInvoiceShareSettings(form: FormData) {
   const whatsappNumber = normalizeInvoicePhone(String(form.get('whatsappNumber') || ''));
   const telegramNumber = normalizeInvoicePhone(String(form.get('telegramNumber') || ''));
   const allowInvoiceShare = form.get('allowInvoiceShare') === 'on';
-  if (allowInvoiceShare && !whatsappNumber && !telegramNumber) throw new Error('Для отправки накладной укажите WhatsApp или Telegram клиента');
   return {whatsappNumber, telegramNumber, allowInvoiceShare};
-}
-
-export function canShareInvoice(customer: {
-  allowInvoiceShare: boolean;
-  whatsappNumber: string | null;
-  telegramNumber: string | null;
-}) {
-  return customer.allowInvoiceShare && Boolean(customer.whatsappNumber || customer.telegramNumber);
 }
 
 export type ShareInvoice = {
