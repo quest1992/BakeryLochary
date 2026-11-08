@@ -1,3 +1,4 @@
+import {previousDebtLabel} from "./invoice-debt";
 import {money} from './money';
 import {invoiceShareDate, type ShareInvoice} from './invoice-share';
 
@@ -41,7 +42,10 @@ export async function createInvoiceImage(invoice: ShareInvoice): Promise<File> {
   y += 20;
   line(`Итого: ${money(invoice.total)}`, 34, true);
   line(`Оплачено: ${money(invoice.paid)}`, 29);
-  if (invoice.debt !== null) line(`Общий долг: ${money(invoice.debt)}`, 32, true);
+  if (invoice.debt !== null) {
+    line(`${previousDebtLabel}: ${money(invoice.debt.beforeInvoiceDay)}`, 32, true);
+    line(`Общий долг: ${money(invoice.debt.total)}`, 32, true);
+  }
   y += 45;
   const stampTop = y;
   line('ОТГРУЖЕНО', 38, true, true);

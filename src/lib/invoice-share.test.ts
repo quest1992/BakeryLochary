@@ -30,8 +30,9 @@ test('electronic image uses shipment date in Dushanbe and excludes signatures an
   assert.ok(text.includes('ОТГРУЖЕНО'));assert.ok(text.some(value=>value.includes('07.11.2026, 01:30')));
   assert.ok(text.some(value=>value.includes('58,50')));
   assert.ok(!text.some(value=>/долг|Принял|Отпустил/i.test(value)));
-  assert.ok(!/долг/i.test(invoiceShareMessage({...invoice,debt:1000})));
-  text=[];await createInvoiceImage({...invoice,debt:273.2});
+  assert.ok(!/долг/i.test(invoiceShareMessage({...invoice,debt:{beforeInvoiceDay:500,total:1000}})));
+  text=[];await createInvoiceImage({...invoice,debt:{beforeInvoiceDay:75,total:273.2}});
+  assert.ok(text.some(value=>value.includes('Долг до даты накладной: 75,00')));
   assert.ok(text.some(value=>value.includes('Общий долг: 273,20')));
  } finally {if(original)Object.defineProperty(globalThis,'document',original);else Reflect.deleteProperty(globalThis,'document');}
 });
