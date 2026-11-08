@@ -135,6 +135,8 @@ export default async function Home({
     tab?: string;
     ok?: string;
     period?: string;
+    week?: string;
+    view?: string;
     from?: string;
     to?: string;
     cutoff?: string;
@@ -147,13 +149,14 @@ export default async function Home({
   if (!user) redirect("/login");
   const q = await searchParams,
     tab = q.tab || "dashboard";
-  if (user.role === "INVESTOR")
+  const ownerInvestorView = user.role === "OWNER" && tab === "finance" && q.view === "investor";
+  if (user.role === "INVESTOR" || ownerInvestorView)
     return (
       <InvestorDashboard
         user={{ name: user.name }}
         tab={tab}
-        from={q.from}
-        to={q.to}
+        week={q.week}
+        owner={ownerInvestorView}
       />
     );
   const analytics = tab === "reports";
@@ -1887,6 +1890,7 @@ export default async function Home({
         )}
         {tab === "finance" && user.role === "OWNER" && (
           <>
+            <section className="card"><Link className="ghostButton" href="/?tab=finance&view=investor">Недельный расчёт инвестора</Link></section>
             <InvestmentManagement />
             <div className="financeForms">
               {companies.length > 0 && <FormBox title="Принять оплату от компании" action={companyPaymentAction}>
