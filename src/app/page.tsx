@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import {
   produceAction,
+  editProductionAction,
   paymentAction,
   companyPaymentAction,
   openingDebtAction,
@@ -133,6 +134,7 @@ export default async function Home({
   searchParams: Promise<{
     tab?: string;
     ok?: string;
+    productionError?: string;
     period?: string;
     week?: string;
     view?: string;
@@ -865,7 +867,8 @@ export default async function Home({
               </Field>
             </FormBox>
             <section className="card tableCard">
-              <h3>Последние партии</h3>
+              <h3>Журнал производства</h3>
+              {q.productionError && <p className="error" role="alert">{q.productionError}</p>}
               <table>
                 <thead>
                   <tr>
@@ -873,6 +876,7 @@ export default async function Home({
                     <th>Продукция</th>
                     <th>Выпечено всего</th>
                     <th>Сотрудник</th>
+                    {user.role === "OWNER" && <th>Правка</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -884,6 +888,17 @@ export default async function Home({
                       </td>
                       <td>{b.quantity} шт.</td>
                       <td>{b.user.name}</td>
+                      {user.role === "OWNER" && <td><details>
+                        <summary>Редактировать</summary>
+                        <form action={editProductionAction} className="miniForm">
+                          <input type="hidden" name="id" value={b.id}/>
+                          <input type="hidden" name="originalQuantity" value={b.quantity}/>
+                          <input type="hidden" name="originalNote" value={b.note ?? ""}/>
+                          <label>Выпечено всего, шт.<input type="number" name="quantity" min="1" defaultValue={b.quantity} required/></label>
+                          <label>Примечание<input name="note" defaultValue={b.note ?? ""}/></label>
+                          <button>Сохранить</button>
+                        </form>
+                      </details></td>}
                     </tr>
                   ))}
                 </tbody>

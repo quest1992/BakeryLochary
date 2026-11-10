@@ -13,6 +13,7 @@ import {
   setSession,
 } from "@/lib/auth";
 import {editShipment,parseShipmentDate} from "@/lib/edit-shipment";
+import {editProduction, productionDefectNote, productionUseNote, ProductionEditError} from "@/lib/edit-production";
 import { calculateProductionUsage } from "@/lib/production";
 import { isValidShipmentItems, type ShipmentItem } from "@/lib/shipment";
 const n = (v: FormDataEntryValue | null) => Number(v);
@@ -38,8 +39,8 @@ export async function produceAction(f: FormData) {
     productId = n(f.get("productId")),
     quantity = n(f.get("quantity")),
     defectiveQuantity = n(f.get("defectiveQuantity"));
-  if (quantity <= 0) throw new Error("Количество должно быть больше нуля");
-  if (defectiveQuantity < 0 || defectiveQuantity > quantity)
+  if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 2147483647) throw new Error("Укажите целое количество больше нуля");
+  if (!Number.isSafeInteger(defectiveQuantity) || defectiveQuantity < 0 || defectiveQuantity > quantity)
     throw new Error("Брак не может быть больше всей партии");
   await db.$transaction(async (tx) => {
     const p = await tx.product.findUnique({
@@ -56,6 +57,14 @@ export async function produceAction(f: FormData) {
         quantity,
       ),
       goodQuantity = quantity - defectiveQuantity;
+    const batch = await tx.productionBatch.create({
+      data: {
+        productId,
+        quantity,
+        userId: u.id,
+        note: String(f.get("note") || ""),
+      },
+    });
     for (const item of usage) {
       await tx.ingredient.update({
         where: { id: item.ingredientId },
@@ -66,7 +75,7 @@ export async function produceAction(f: FormData) {
           ingredientId: item.ingredientId,
           type: "PRODUCTION_USE",
           quantity: -item.used,
-          note: "Партия " + p.name,
+          note: productionUseNote(batch.id) + p.name,
         },
       });
     }
@@ -75,14 +84,6 @@ export async function produceAction(f: FormData) {
       create: { productId, quantity: goodQuantity },
       update: { quantity: { increment: goodQuantity } },
     });
-    await tx.productionBatch.create({
-      data: {
-        productId,
-        quantity,
-        userId: u.id,
-        note: String(f.get("note") || ""),
-      },
-    });
     if (defectiveQuantity > 0)
       await tx.productMovement.create({
         data: {
@@ -90,7 +91,7 @@ export async function produceAction(f: FormData) {
           type: "WRITE_OFF",
           quantity: -defectiveQuantity,
           userId: u.id,
-          note: "Брак при производстве",
+          note: productionDefectNote(batch.id),
         },
       });
   });
@@ -101,6 +102,21 @@ export async function produceAction(f: FormData) {
       : "Партия выпущена, сырьё списано",
   );
 }
+export async function editProductionAction(f: FormData) {
+  await requireOwner();
+  try {
+    await db.$transaction(tx => editProduction(
+      tx, n(f.get("id")), n(f.get("quantity")), String(f.get("note") ?? ""),
+      n(f.get("originalQuantity")), String(f.get("originalNote") ?? ""),
+    ));
+  } catch (error) {
+    const message = error instanceof ProductionEditError
+      ? error.message : "Не удалось сохранить партию. Обновите журнал и попробуйте ещё раз";
+    redirect("/?tab=production&productionError=" + encodeURIComponent(message));
+  }
+  go("production", "Партия исправлена");
+}
+
 export async function shipmentAction(f: FormData) {
   const u = await requireBusinessWriter(),
     customerId = n(f.get("customerId")),
